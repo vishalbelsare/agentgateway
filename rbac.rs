@@ -1,4 +1,4 @@
-use http::header::HeaderMap;
+use http::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION};
 use serde_json::Value;
 use serde_json::map::Map;
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
@@ -99,7 +99,7 @@ impl Claims {
 }
 // TODO: Swap to error
 fn get_claims(headers: &HeaderMap) -> Option<Claims> {
-  let auth_header = headers.get("Authorization");
+  let auth_header = headers.get(AUTHORIZATION);
   match auth_header {
     Some(auth_header) => {
       let auth_header_value = auth_header.to_str().unwrap();
@@ -162,4 +162,51 @@ fn test_get_claims() {
   let headers = HeaderMap::new();
   let claims = get_claims(&headers);
   assert!(claims.is_none());
+}
+
+#[test]
+fn test_resource_matches() {
+  let resource1 = ResourceType::Tool{id: "increment".to_string()};
+  let resource2 = ResourceType::Tool{id: "*".to_string()};
+  assert!(resource2.matches(&resource1));
+
+  let resource1 = ResourceType::Prompt{id: "increment".to_string()};
+  let resource2 = ResourceType::Prompt{id: "increment".to_string()};
+  assert!(resource2.matches(&resource1));
+
+  let resource1 = ResourceType::Resource{id: "increment".to_string()};
+  let resource2 = ResourceType::Resource{id: "increment_2".to_string()};
+  assert!(!resource2.matches(&resource1));
+
+  let resource1 = ResourceType::Resource{id: "*".to_string()};
+  let resource2 = ResourceType::Resource{id: "increment".to_string()};
+  assert!(!resource2.matches(&resource1));
+}
+
+#[test]
+fn test_rbac_false_check() {
+  let rules = vec![Rule {
+    key: "user".to_string(),
+    value: "admin".to_string(),
+    matcher: Matcher::Equals,
+    resource: ResourceType::Tool{id: "increment".to_string()},
+  }];
+  let mut headers = HeaderMap::new();
+  headers.insert(AUTHORIZATION, HeaderValue::from_str("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30").unwrap());
+  let rbac = RbacEngine::new(rules, Claims::new(&headers));
+  assert!(!rbac.check(ResourceType::Tool{id: "increment".to_string()}));
+}
+
+#[test]
+fn test_rbac_check() {
+  let rules = vec![Rule {
+    key: "sub".to_string(),
+    value: "1234567890".to_string(),
+    matcher: Matcher::Equals,
+    resource: ResourceType::Tool{id: "increment".to_string()},
+  }];
+  let mut headers = HeaderMap::new();
+  headers.insert(AUTHORIZATION, HeaderValue::from_str("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30").unwrap());
+  let rbac = RbacEngine::new(rules, Claims::new(&headers));
+  assert!(rbac.check(ResourceType::Tool{id: "increment".to_string()}));
 }
