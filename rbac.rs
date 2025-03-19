@@ -102,6 +102,8 @@ fn get_claims(headers: &HeaderMap) -> Option<Claims> {
   let auth_header = headers.get(AUTHORIZATION);
   match auth_header {
     Some(auth_header) => {
+      // TODO: Handle errors
+      // Should never happen because this means it's non-ascii
       let auth_header_value = auth_header.to_str().unwrap();
       let parts: Vec<&str> = auth_header_value.splitn(2, " ").collect();
       if parts.len() != 2 || parts[0] != "Bearer" {
@@ -135,8 +137,13 @@ fn decode_jwt(token: &str) -> Option<Claims> {
   let payload = parts[1];
   match STANDARD_NO_PAD.decode(payload) {
     Ok(decoded) => {
-      let claims: Map<String, Value> = serde_json::from_slice(&decoded).unwrap();
-      Some(Claims { claims })
+      match serde_json::from_slice(&decoded) {
+        Ok(claims) => Some(Claims { claims }),
+        Err(e) => {
+          tracing::info!("Error parsing JWT payload: {}", e);
+          None
+        }
+      }
     }
     Err(e) => {
       println!("Error decoding JWT: {}", e);

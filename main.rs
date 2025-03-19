@@ -206,7 +206,7 @@ async fn main() -> Result<()> {
             serde_json::from_reader(reader)?
         }
         None => {
-            let mut cfg = Config::new(HashMap::from([
+            Config::new(HashMap::from([
                 ("git".to_string(), Output::Stdio {
                     cmd: "uvx".to_string(),
                     args: vec!["mcp-server-git".to_string()],
@@ -218,8 +218,7 @@ async fn main() -> Result<()> {
                         "@modelcontextprotocol/server-everything".to_string(),
                     ],
                 }),
-            ]));
-            cfg
+            ]))
         }
     };
 
@@ -230,10 +229,9 @@ async fn main() -> Result<()> {
                 tracing::info!("Starting stdio server: {name}");
                 let client = serve_client(
                     ClientHandlerService::simple(),
-                    TokioChildProcess::new(Command::new(cmd).args(args)).unwrap(),
+                    TokioChildProcess::new(Command::new(cmd).args(args))?,
                 )
-                .await
-                .unwrap();
+                .await?;
                 tracing::info!("Connected to stdio server: {name}");
                 servers.spawn(async move { (name, client) });
             }
