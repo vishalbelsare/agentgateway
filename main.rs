@@ -1,7 +1,7 @@
 use anyhow::Result;
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::sse::{Event, Sse},
     routing::get,
     Json, Router,
@@ -22,6 +22,7 @@ use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing_subscriber::{self, EnvFilter};
 mod relay;
+mod rbac;
 
 use relay::Relay;
 
@@ -35,15 +36,15 @@ struct Args {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Config {
-    input: Input,
+    input: Option<Input>,
     outputs: HashMap<String, Output>,
 }
 
-impl Default for Config {
-    fn default() -> Self {
+impl Config {
+    pub fn new(outputs: HashMap<String, Output>) -> Self {
         Self {
-            input: Input::Stdio,
-            outputs: HashMap::new(),
+            input: Some(Input::Stdio{}),
+            outputs,
         }
     }
 }
@@ -61,7 +62,13 @@ pub enum Input {
     #[serde(rename = "sse")]
     Sse { host: String, port: u16 },
     #[serde(rename = "stdio")]
-    Stdio,
+    Stdio{},
+}
+
+impl Default for Input {
+    fn default() -> Self {
+        Self::Stdio{}
+    }
 }
 
 type SessionId = Arc<str>;
@@ -118,8 +125,13 @@ async fn post_event_handler(
     Ok(StatusCode::ACCEPTED)
 }
 
-async fn sse_handler(State(app): State<App>) -> Sse<impl Stream<Item = Result<Event, io::Error>>> {
+async fn sse_handler(
+    State(app): State<App>,
+    headers: HeaderMap,
+) -> Sse<impl Stream<Item = Result<Event, io::Error>>> {
     // it's 4KB
+    let auth_header = headers.get("Authorization");
+
     let session = session_id();
     tracing::info!(%session, "sse connection");
     use tokio_stream::wrappers::ReceiverStream;
@@ -175,7 +187,7 @@ async fn main() -> Result<()> {
     // Initialize logging
     // Initialize the tracing subscriber with file and stdout logging
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::ERROR.into()))
+        .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
         .with_writer(std::io::stderr)
         .with_ansi(false)
         .init();
@@ -188,24 +200,19 @@ async fn main() -> Result<()> {
             serde_json::from_reader(reader)?
         }
         None => {
-            let mut cfg = Config::default();
-            cfg.outputs.insert(
-                "git".to_string(),
-                Output::Stdio {
+            let mut cfg = Config::new(HashMap::from([
+                ("git".to_string(), Output::Stdio {
                     cmd: "uvx".to_string(),
                     args: vec!["mcp-server-git".to_string()],
-                },
-            );
-            cfg.outputs.insert(
-                "everything".to_string(),
-                Output::Stdio {
+                }),
+                ("everything".to_string(), Output::Stdio {
                     cmd: "npx".to_string(),
                     args: vec![
                         "-y".to_string(),
                         "@modelcontextprotocol/server-everything".to_string(),
                     ],
-                },
-            );
+                }),
+            ]));
             cfg
         }
     };
@@ -249,13 +256,12 @@ async fn main() -> Result<()> {
         HashMap::new();
     while let Some(result) = servers.join_next().await {
         let (name, client) = result.unwrap();
-        tracing::info!("Server {name} exited");
         services.insert(name.to_string(), Arc::new(Mutex::new(client)));
     }
 
     // Create an instance of our counter router
-    match cfg.input {
-        Input::Stdio => {
+    match cfg.input.unwrap_or_default() {
+        Input::Stdio{} => {
             let relay = serve_server(
                 ServerHandlerService::new(Relay { services: services }),
                 (tokio::io::stdin(), tokio::io::stdout()),
