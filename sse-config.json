@@ -5,6 +5,14 @@
       "port": 8001
     }
   },
+  "rules": [
+    {
+      "key": "user",
+      "value": "admin",
+      "resource": {"type": "tool", "id": "increment"},
+      "matcher": {"type": "equals"}
+    }
+  ],
   "outputs": {
     "git": {
       "stdio": {

@@ -62,7 +62,7 @@ impl ServerHandler for Relay {
         request: CallToolRequestParam,
         context: RequestContext<RoleServer>,
     ) -> std::result::Result<CallToolResult, McpError> {
-        if !self.rbac.check(rbac::ResourceType::Tool(request.name.to_string())) {
+        if !self.rbac.check(rbac::ResourceType::Tool{id: request.name.to_string()}) {
             return Err(McpError::method_not_found::<CallToolRequestMethod>());
         }
         let tool_name = request.name.to_string();

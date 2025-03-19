@@ -34,10 +34,11 @@ struct Args {
     filename: Option<std::path::PathBuf>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
     input: Option<Input>,
     outputs: HashMap<String, Output>,
+    rules: Vec<rbac::Rule>,
 }
 
 impl Config {
@@ -45,6 +46,7 @@ impl Config {
         Self {
             input: Some(Input::Stdio{}),
             outputs,
+            rules: vec![],
         }
     }
 }
@@ -133,7 +135,7 @@ async fn sse_handler(
 ) -> Sse<impl Stream<Item = Result<Event, io::Error>>> {
     // it's 4KB
 
-    let claims = rbac::Claims::new(&headers).unwrap();
+    let claims = rbac::Claims::new(&headers);
     let rbac = rbac::RbacEngine::new(app.rules, claims);
     let session = session_id();
     tracing::info!(%session, "sse connection");

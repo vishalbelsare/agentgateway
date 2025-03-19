@@ -3,7 +3,6 @@ use serde_json::Value;
 use serde_json::map::Map;
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
 use serde::{Deserialize, Serialize};
-use std::cmp::PartialEq;
 
 
 #[derive(Clone)]
@@ -28,7 +27,7 @@ impl RbacEngine {
     }
 
     self.rules.iter().any(|rule| {
-      rule.resource == resource && self.claims.matches(&rule.key, &rule.value, &rule.matcher)
+      rule.resource.matches(&resource) && self.claims.matches(&rule.key, &rule.value, &rule.matcher)
     })
   }
 }
@@ -48,18 +47,18 @@ pub struct Rule {
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "type")]
 pub enum ResourceType {
-  Tool(String),
-  Prompt(String),
-  Resource(String),
+  Tool{id: String},
+  Prompt{id: String},
+  Resource{id: String},
 }
 
-impl PartialEq for ResourceType {
-  fn eq(&self, other: &Self) -> bool {
+impl ResourceType {
+  pub fn matches(&self, other: &Self) -> bool {
     // Support wildcard
     match (self, other) {
-      (ResourceType::Tool(a), ResourceType::Tool(b)) => a == b || a == "*",
-      (ResourceType::Prompt(a), ResourceType::Prompt(b)) => a == b || a == "*",
-      (ResourceType::Resource(a), ResourceType::Resource(b)) => a == b || a == "*",
+      (ResourceType::Tool{id: a}, ResourceType::Tool{id: b}) => a == b || a == "*",
+      (ResourceType::Prompt{id: a}, ResourceType::Prompt{id: b}) => a == b || a == "*",
+      (ResourceType::Resource{id: a}, ResourceType::Resource{id: b}) => a == b || a == "*",
       _ => false,
     }
   }
@@ -80,10 +79,10 @@ pub struct Claims {
 }
 
 impl Claims {
-  pub fn new(headers: &HeaderMap) -> Option<Self> {
+  pub fn new(headers: &HeaderMap) -> Self {
     match get_claims(headers) {
-      Some(claims) => Some(Self { claims: claims.claims }),
-      None => None,
+      Some(claims) => Self { claims: claims.claims },
+      None => Self { claims: Map::new() },
     }
   }
 
