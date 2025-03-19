@@ -33,6 +33,6 @@ RUN mkdir -p /etc/apt/keyrings \
 
 RUN uv python install 3.12
 
-COPY --from=builder /target/release/mcp-relay /usr/local/bin/mcp-relay
+COPY --from=builder /target/release/mcp-gateway /usr/local/bin/mcp-gateway
 
-ENTRYPOINT ["mcp-relay"]
+ENTRYPOINT ["mcp-gateway"]

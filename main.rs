@@ -80,6 +80,7 @@ fn session_id() -> SessionId {
 
 #[derive(Clone, Default)]
 pub struct App {
+    rules: Vec<rbac::Rule>,
     services: HashMap<String, Arc<Mutex<RunningService<ClientHandlerService>>>>,
     txs: Arc<
         tokio::sync::RwLock<HashMap<SessionId, tokio::sync::mpsc::Sender<ClientJsonRpcMessage>>>,
@@ -89,6 +90,7 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         Self {
+            rules: vec![],
             txs: Default::default(),
             services: Default::default(),
         }
@@ -130,8 +132,9 @@ async fn sse_handler(
     headers: HeaderMap,
 ) -> Sse<impl Stream<Item = Result<Event, io::Error>>> {
     // it's 4KB
-    let auth_header = headers.get("Authorization");
 
+    let claims = rbac::Claims::new(&headers).unwrap();
+    let rbac = rbac::RbacEngine::new(app.rules, claims);
     let session = session_id();
     tracing::info!(%session, "sse connection");
     use tokio_stream::wrappers::ReceiverStream;
@@ -147,6 +150,7 @@ async fn sse_handler(
         tokio::spawn(async move {
             let service = ServerHandlerService::new(Relay {
                 services: app.services,
+                rbac: rbac,
             });
             let stream = ReceiverStream::new(from_client_rx);
             let sink = PollSender::new(to_client_tx).sink_map_err(std::io::Error::other);
@@ -263,7 +267,7 @@ async fn main() -> Result<()> {
     match cfg.input.unwrap_or_default() {
         Input::Stdio{} => {
             let relay = serve_server(
-                ServerHandlerService::new(Relay { services: services }),
+                ServerHandlerService::new(Relay { services: services, rbac: rbac::RbacEngine::passthrough() }),
                 (tokio::io::stdin(), tokio::io::stdout()),
             )
             .await

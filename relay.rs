@@ -7,10 +7,11 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-
-
+use crate::rbac::RbacEngine;
+use crate::rbac;
 #[derive(Clone)]
 pub struct Relay {
+    pub rbac: RbacEngine,
     pub services: HashMap<String, Arc<Mutex<RunningService<ClientHandlerService>>>>,
 }
 
@@ -61,6 +62,9 @@ impl ServerHandler for Relay {
         request: CallToolRequestParam,
         context: RequestContext<RoleServer>,
     ) -> std::result::Result<CallToolResult, McpError> {
+        if !self.rbac.check(rbac::ResourceType::Tool(request.name.to_string())) {
+            return Err(McpError::method_not_found::<CallToolRequestMethod>());
+        }
         let tool_name = request.name.to_string();
         let (service_name, tool) = tool_name.split_once(':').unwrap();
         let service = self.services.get(service_name).unwrap();
