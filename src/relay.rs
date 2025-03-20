@@ -18,19 +18,21 @@ pub struct Relay {
 impl ServerHandler for Relay {
 	fn get_info(&self) -> ServerInfo {
 		ServerInfo {
-            protocol_version: ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities {
-                experimental: None,
-                logging: None,
-                prompts: Some(PromptsCapability::default()),
-                resources: Some(ResourcesCapability::default()),
-                tools: Some(ToolsCapability {
-                    list_changed: None,
-                }),
-            },
-            server_info: Implementation::from_build_env(),
-            instructions: Some("This server provides a counter tool that can increment and decrement values. The counter starts at 0 and can be modified using the 'increment' and 'decrement' tools. Use 'get_value' to check the current count.".to_string()),
-        }
+      protocol_version: ProtocolVersion::V_2024_11_05,
+      capabilities: ServerCapabilities {
+          experimental: None,
+          logging: None,
+          prompts: Some(PromptsCapability::default()),
+          resources: Some(ResourcesCapability::default()),
+          tools: Some(ToolsCapability {
+              list_changed: None,
+          }),
+      },
+      server_info: Implementation::from_build_env(),
+			instructions: Some(
+				"This server provides a counter tool that can increment and decrement values. The counter starts at 0 and can be modified using the 'increment' and 'decrement' tools. Use 'get_value' to check the current count.".to_string(),
+			),
+		}
 	}
 
 	async fn list_resources(
