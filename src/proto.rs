@@ -2,7 +2,7 @@
 // proto modules.
 #[allow(warnings)]
 #[allow(clippy::derive_partial_eq_without_eq)]
-pub mod xds {
+pub mod envoy {
     pub mod service {
         pub mod discovery {
             pub mod v3 {
@@ -12,6 +12,10 @@ pub mod xds {
     }
 }
 
-pub mod rbac {
-    tonic::include_proto!("rbac.mcp.kgateway.dev.v1alpha1");
+pub mod mcp {
+    pub mod kgateway_dev {
+        pub mod rbac {
+            tonic::include_proto!("mcp.kgateway.dev.rbac.v1alpha1");
+        }
+    }
 }

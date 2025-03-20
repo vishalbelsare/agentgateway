@@ -35,9 +35,12 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(services: HashMap<String, Arc<Mutex<RunningService<ClientHandlerService>>>>) -> Self {
+    pub fn new(
+        services: HashMap<String, Arc<Mutex<RunningService<ClientHandlerService>>>>,
+        rules: Vec<rbac::Rule>,
+    ) -> Self {
         Self {
-            rules: vec![],
+            rules: rules,
             txs: Default::default(),
             services: services,
         }

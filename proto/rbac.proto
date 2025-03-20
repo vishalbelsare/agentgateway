@@ -2,7 +2,7 @@ syntax = "proto3";
 
 import "google/protobuf/struct.proto";
 
-package rbac.mcp.kgateway.dev.v1alpha1;
+package mcp.kgateway.dev.rbac.v1alpha1;
 
 // A rule that defines a resource type and a key-value pair 
 //that can be used to match against a resource.

@@ -1,6 +1,6 @@
-use crate::proto::xds::service::discovery::v3::aggregated_discovery_service_client::AggregatedDiscoveryServiceClient;
-use crate::proto::xds::service::discovery::v3::Resource as ProtoResource;
-use crate::proto::xds::service::discovery::v3::{DeltaDiscoveryRequest, DeltaDiscoveryResponse, Node, Status};
+use crate::proto::envoy::service::discovery::v3::aggregated_discovery_service_client::AggregatedDiscoveryServiceClient;
+use crate::proto::envoy::service::discovery::v3::Resource as ProtoResource;
+use crate::proto::envoy::service::discovery::v3::{DeltaDiscoveryRequest, DeltaDiscoveryResponse, Node, Status};
 use prost::{DecodeError, EncodeError};
 use prost_types::value::Kind;
 use prost_types::{Struct, Value};

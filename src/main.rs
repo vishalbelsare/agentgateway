@@ -124,8 +124,7 @@ async fn main() -> Result<()> {
                     format!("http://{}:{}/sse", host, port).as_str(),
                     Default::default(),
                 )
-                .await
-                .unwrap();
+                .await?;
 
                 let client = serve_client(ClientHandlerService::simple(), transport)
                     .await
@@ -142,7 +141,7 @@ async fn main() -> Result<()> {
     let mut services: HashMap<String, Arc<Mutex<RunningService<ClientHandlerService>>>> =
         HashMap::new();
     while let Some(result) = servers.join_next().await {
-        let (name, client) = result.unwrap();
+        let (name, client) = result?;
         services.insert(name.to_string(), Arc::new(Mutex::new(client)));
     }
 
@@ -161,7 +160,7 @@ async fn main() -> Result<()> {
         }
         Listener::Sse { host, port } => {
             let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
-            let mut app = App::new(services);
+            let app = App::new(services, cfg.rules);
             let router = app.router();
             axum::serve(listener, router).await?;
         }

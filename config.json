@@ -1,7 +1,7 @@
 {
-  "input": {
+  "listener": {
     "sse": {
-      "host": "127.0.0.1",
+      "host": "0.0.0.0",
       "port": 8001
     }
   },
@@ -9,11 +9,11 @@
     {
       "key": "sub",
       "value": "1234567890",
-      "resource": {"type": "tool", "id": "add"},
+      "resource": {"type": "tool", "id": "*"},
       "matcher": {"type": "equals"}
     }
   ],
-  "outputs": {
+  "targets": {
     "git": {
       "stdio": {
         "cmd": "uvx",
