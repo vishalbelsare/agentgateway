@@ -1,6 +1,3 @@
-use std::env;
-use std::process::Command;
-
 // This build script is used to generate the rust source files that
 // we need for XDS GRPC communication.
 fn main() -> Result<(), anyhow::Error> {
