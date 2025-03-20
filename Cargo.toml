@@ -26,6 +26,9 @@ prost-types = "0.13"
 tonic = { version = "0.12", default-features = false, features = ["prost", "codegen"] }
 split-iter = "0.1"
 thiserror = "2.0"
+serde_yaml = "0.9.34"
+ppp = "2.3.0"
+bytes = "1.10.1"
 
 [build-dependencies]
 tonic-build = { version = "0.12", default-features = false, features = ["prost"] }

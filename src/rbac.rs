@@ -1,3 +1,4 @@
+use crate::proxyprotocol::Address;
 use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
 use http::header::{AUTHORIZATION, HeaderMap};
 use serde::{Deserialize, Serialize};
@@ -79,13 +80,20 @@ pub struct Claims {
 }
 
 impl Claims {
-	pub fn new(headers: &HeaderMap) -> Self {
+	pub fn from_headers(headers: &HeaderMap) -> Self {
 		match get_claims(headers) {
 			Some(claims) => Self {
 				claims: claims.claims,
 			},
 			None => Self { claims: Map::new() },
 		}
+	}
+	pub fn from_headers_and_connection(headers: &HeaderMap, connection_info: &Address) -> Self {
+		let Claims { mut claims } = Self::from_headers(headers);
+		if let Some(id) = connection_info.identity.as_ref() {
+			claims.insert("connection:identity".to_string(), Value::String(id.clone()));
+		};
+		Claims { claims }
 	}
 
 	pub fn matches(&self, key: &str, value: &str, matcher: &Matcher) -> bool {
@@ -110,10 +118,10 @@ fn get_claims(headers: &HeaderMap) -> Option<Claims> {
 				return None;
 			}
 			let token = parts[1];
-			let claims = decode_jwt(token);
-			claims
+
+			decode_jwt(token)
 		},
-		None => return None,
+		None => None,
 	}
 }
 
@@ -225,7 +233,7 @@ fn test_rbac_false_check() {
 	}];
 	let mut headers = HeaderMap::new();
 	headers.insert(AUTHORIZATION, http::header::HeaderValue::from_str("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30").unwrap());
-	let rbac = RbacEngine::new(rules, Claims::new(&headers));
+	let rbac = RbacEngine::new(rules, Claims::from_headers(&headers));
 	assert!(!rbac.check(ResourceType::Tool {
 		id: "increment".to_string()
 	}));
@@ -243,7 +251,7 @@ fn test_rbac_check() {
 	}];
 	let mut headers = HeaderMap::new();
 	headers.insert(AUTHORIZATION, http::header::HeaderValue::from_str("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30").unwrap());
-	let rbac = RbacEngine::new(rules, Claims::new(&headers));
+	let rbac = RbacEngine::new(rules, Claims::from_headers(&headers));
 	assert!(rbac.check(ResourceType::Tool {
 		id: "increment".to_string()
 	}));

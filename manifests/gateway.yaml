@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-gateway
+spec:
+  selector:
+    matchLabels:
+      app: mcp-gateway
+  template:
+    metadata:
+      labels:
+        app: mcp-gateway
+    spec:
+      containers:
+        - name: mcp-gateway
+          image: localhost:5000/mcp-gateway:latest
+          command:
+            - mcp-gateway
+            - --config=/config/config.yaml
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config
+      volumes:
+        - name: config-volume
+          configMap:
+            name: mcp-gateway-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-gateway
+spec:
+  selector:
+    app: mcp-gateway
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8001
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-gateway-config
+data:
+  config.yaml: |
+    listener:
+      sse:
+        host: 0.0.0.0
+        port: 8001
+    rules: []
+    targets:
+      local:
+        stdio:
+          args:
+          - '@modelcontextprotocol/server-everything'
+          cmd: npx
+
+#      remote:
+#        sse:
+#          host: mcp-everything
+#          port: 80

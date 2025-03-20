@@ -58,9 +58,19 @@ pub enum Targets {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum Listener {
 	#[serde(rename = "sse")]
-	Sse { host: String, port: u16 },
+	Sse {
+		host: String,
+		port: u16,
+		mode: Option<ListenerMode>,
+	},
 	#[serde(rename = "stdio")]
 	Stdio {},
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+pub enum ListenerMode {
+	#[serde(rename = "proxy")]
+	Proxy,
 }
 
 impl Default for Listener {
@@ -83,8 +93,11 @@ async fn main() -> Result<()> {
 	let cfg = match args.config {
 		Some(filename) => {
 			let file = std::fs::File::open(filename)?;
-			let reader = std::io::BufReader::new(file);
-			serde_json::from_reader(reader)?
+			let mut reader = std::io::BufReader::new(file);
+			let deserializer = serde_yaml::Deserializer::from_reader(&mut reader);
+			// Use the more obscure singleton_map_recursive single serde_yaml otherwise excepts
+			// an obscure YAML-specific tagging format for enums
+			serde_yaml::with::singleton_map_recursive::deserialize::<Config, _>(deserializer)?
 		},
 		None => Config::new(HashMap::from([
 			(
@@ -163,11 +176,16 @@ async fn main() -> Result<()> {
 			})?;
 			relay.waiting().await?;
 		},
-		Listener::Sse { host, port } => {
+		Listener::Sse { host, port, mode } => {
 			let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
 			let app = App::new(services, cfg.rules);
 			let router = app.router();
-			axum::serve(listener, router).await?;
+
+			let enable_proxy = Some(ListenerMode::Proxy) == mode;
+
+			let listener = proxyprotocol::Listener::new(listener, enable_proxy);
+			let svc = router.into_make_service_with_connect_info::<proxyprotocol::Address>();
+			axum::serve(listener, svc).await?;
 		},
 	};
 
