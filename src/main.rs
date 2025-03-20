@@ -1,15 +1,7 @@
 use anyhow::Result;
-use axum::{
-    extract::{Query, State},
-    http::{HeaderMap, StatusCode},
-    response::sse::{Event, Sse},
-    routing::get,
-    Json, Router,
-};
 use clap::Parser;
-use futures::{stream::Stream, SinkExt, StreamExt};
 use rmcp::{
-    model::*, serve_client, serve_server, service::RunningService,
+    serve_client, serve_server, service::RunningService,
     transport::child_process::TokioChildProcess, transport::sse::SseTransport,
     ClientHandlerService, ServerHandlerService,
 };
@@ -29,6 +21,7 @@ mod proto {
 }
 
 use mcp_gateway::relay::Relay;
+use mcp_gateway::sse::App;
 use mcp_gateway::*;
 
 #[derive(Parser, Debug)]
@@ -41,23 +34,23 @@ struct Args {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
-    input: Option<Input>,
-    outputs: HashMap<String, Output>,
+    listener: Option<Listener>,
+    targets: HashMap<String, Targets>,
     rules: Vec<rbac::Rule>,
 }
 
 impl Config {
-    pub fn new(outputs: HashMap<String, Output>) -> Self {
+    pub fn new(outputs: HashMap<String, Targets>) -> Self {
         Self {
-            input: Some(Input::Stdio{}),
-            outputs,
+            listener: Some(Listener::Stdio{}),
+            targets: outputs,
             rules: vec![],
         }
     }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub enum Output {
+pub enum Targets {
     #[serde(rename = "sse")]
     Sse { host: String, port: u16 },
     #[serde(rename = "stdio")]
@@ -65,132 +58,17 @@ pub enum Output {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub enum Input {
+pub enum Listener {
     #[serde(rename = "sse")]
     Sse { host: String, port: u16 },
     #[serde(rename = "stdio")]
     Stdio{},
 }
 
-impl Default for Input {
+impl Default for Listener {
     fn default() -> Self {
         Self::Stdio{}
     }
-}
-
-type SessionId = Arc<str>;
-
-fn session_id() -> SessionId {
-    let id = format!("{:016x}", rand::random::<u128>());
-    Arc::from(id)
-}
-
-#[derive(Clone, Default)]
-pub struct App {
-    rules: Vec<rbac::Rule>,
-    services: HashMap<String, Arc<Mutex<RunningService<ClientHandlerService>>>>,
-    txs: Arc<
-        tokio::sync::RwLock<HashMap<SessionId, tokio::sync::mpsc::Sender<ClientJsonRpcMessage>>>,
-    >,
-}
-
-impl App {
-    pub fn new() -> Self {
-        Self {
-            rules: vec![],
-            txs: Default::default(),
-            services: Default::default(),
-        }
-    }
-    pub fn router(&self) -> Router {
-        Router::new()
-            .route("/sse", get(sse_handler).post(post_event_handler))
-            .with_state(self.clone())
-    }
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PostEventQuery {
-    pub session_id: String,
-}
-
-async fn post_event_handler(
-    State(app): State<App>,
-    Query(PostEventQuery { session_id }): Query<PostEventQuery>,
-    Json(message): Json<ClientJsonRpcMessage>,
-) -> Result<StatusCode, StatusCode> {
-    tracing::info!(session_id, ?message, "new client message");
-    let tx = {
-        let rg = app.txs.read().await;
-        rg.get(session_id.as_str())
-            .ok_or(StatusCode::NOT_FOUND)?
-            .clone()
-    };
-    if tx.send(message).await.is_err() {
-        tracing::error!("send message error");
-        return Err(StatusCode::GONE);
-    }
-    Ok(StatusCode::ACCEPTED)
-}
-
-async fn sse_handler(
-    State(app): State<App>,
-    headers: HeaderMap,
-) -> Sse<impl Stream<Item = Result<Event, io::Error>>> {
-    // it's 4KB
-
-    let claims = rbac::Claims::new(&headers);
-    let rbac = rbac::RbacEngine::new(app.rules, claims);
-    let session = session_id();
-    tracing::info!(%session, "sse connection");
-    use tokio_stream::wrappers::ReceiverStream;
-    use tokio_util::sync::PollSender;
-    let (from_client_tx, from_client_rx) = tokio::sync::mpsc::channel(64);
-    let (to_client_tx, to_client_rx) = tokio::sync::mpsc::channel(64);
-    app.txs
-        .write()
-        .await
-        .insert(session.clone(), from_client_tx);
-    {
-        let session = session.clone();
-        tokio::spawn(async move {
-            let service = ServerHandlerService::new(Relay {
-                services: app.services,
-                rbac: rbac,
-            });
-            let stream = ReceiverStream::new(from_client_rx);
-            let sink = PollSender::new(to_client_tx).sink_map_err(std::io::Error::other);
-            let result = serve_server(service, (sink, stream))
-                .await
-                .inspect_err(|e| {
-                    tracing::error!("serving error: {:?}", e);
-                });
-
-            if let Err(e) = result {
-                tracing::error!(error = ?e, "initialize error");
-                app.txs.write().await.remove(&session);
-                return;
-            }
-            let _running_result = result.unwrap().waiting().await.inspect_err(|e| {
-                tracing::error!(error = ?e, "running error");
-            });
-            app.txs.write().await.remove(&session);
-        });
-    }
-
-    let stream = futures::stream::once(futures::future::ok(
-        Event::default()
-            .event("endpoint")
-            .data(format!("?sessionId={session}")),
-    ))
-    .chain(ReceiverStream::new(to_client_rx).map(|message| {
-        match serde_json::to_string(&message) {
-            Ok(bytes) => Ok(Event::default().event("message").data(&bytes)),
-            Err(e) => Err(io::Error::new(io::ErrorKind::InvalidData, e)),
-        }
-    }));
-    Sse::new(stream)
 }
 
 #[tokio::main]
@@ -212,11 +90,11 @@ async fn main() -> Result<()> {
         }
         None => {
             Config::new(HashMap::from([
-                ("git".to_string(), Output::Stdio {
+                ("git".to_string(), Targets::Stdio {
                     cmd: "uvx".to_string(),
                     args: vec!["mcp-server-git".to_string()],
                 }),
-                ("everything".to_string(), Output::Stdio {
+                ("everything".to_string(), Targets::Stdio {
                     cmd: "npx".to_string(),
                     args: vec![
                         "-y".to_string(),
@@ -228,9 +106,9 @@ async fn main() -> Result<()> {
     };
 
     let mut servers = JoinSet::new();
-    for (name, output) in cfg.outputs.into_iter() {
+    for (name, output) in cfg.targets.into_iter() {
         match output {
-            Output::Stdio { cmd, args } => {
+            Targets::Stdio { cmd, args } => {
                 tracing::info!("Starting stdio server: {name}");
                 let client = serve_client(
                     ClientHandlerService::simple(),
@@ -240,7 +118,7 @@ async fn main() -> Result<()> {
                 tracing::info!("Connected to stdio server: {name}");
                 servers.spawn(async move { (name, client) });
             }
-            Output::Sse { host, port } => {
+            Targets::Sse { host, port } => {
                 tracing::info!("Starting sse server: {name}");
                 let transport: SseTransport = SseTransport::start(
                     format!("http://{}:{}/sse", host, port).as_str(),
@@ -269,8 +147,8 @@ async fn main() -> Result<()> {
     }
 
     // Create an instance of our counter router
-    match cfg.input.unwrap_or_default() {
-        Input::Stdio{} => {
+    match cfg.listener.unwrap_or_default() {
+        Listener::Stdio{} => {
             let relay = serve_server(
                 ServerHandlerService::new(Relay { services: services, rbac: rbac::RbacEngine::passthrough() }),
                 (tokio::io::stdin(), tokio::io::stdout()),
@@ -281,10 +159,9 @@ async fn main() -> Result<()> {
             })?;
             relay.waiting().await?;
         }
-        Input::Sse { host, port } => {
+        Listener::Sse { host, port } => {
             let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
-            let mut app = App::new();
-            app.services = services;
+            let mut app = App::new(services);
             let router = app.router();
             axum::serve(listener, router).await?;
         }
