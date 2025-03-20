@@ -2,11 +2,14 @@ FROM rust:1.85.0-slim-bullseye AS builder
 
 ARG TARGETARCH
 
-COPY Cargo.toml Cargo.lock ./
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN cargo update
-
-COPY main.rs ./
+WORKDIR /app
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY proto ./proto
+COPY src ./src
 
 RUN cargo build --release
 
@@ -33,6 +36,7 @@ RUN mkdir -p /etc/apt/keyrings \
 
 RUN uv python install 3.12
 
-COPY --from=builder /target/release/mcp-gateway /usr/local/bin/mcp-gateway
+COPY --from=builder /app/target/release/mcp-gateway /usr/local/bin/mcp-gateway
+COPY config.json /etc/mcp-gateway/config.json
 
-ENTRYPOINT ["mcp-gateway"]
+ENTRYPOINT ["mcp-gateway", "-c", "/etc/mcp-gateway/config.json"]

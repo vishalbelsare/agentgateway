@@ -35,8 +35,8 @@ use mcp_gateway::*;
 #[command(version, about, long_about = None)]
 struct Args {
     /// Sets a custom config file
-    #[arg(short, long, value_name = "file")]
-    filename: Option<std::path::PathBuf>,
+    #[arg(short, long, value_name = "config")]
+    config: Option<std::path::PathBuf>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -204,7 +204,7 @@ async fn main() -> Result<()> {
         .init();
 
     let args = Args::parse();
-    let cfg = match args.filename {
+    let cfg = match args.config {
         Some(filename) => {
             let file = std::fs::File::open(filename)?;
             let reader = std::io::BufReader::new(file);

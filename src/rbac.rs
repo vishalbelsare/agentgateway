@@ -21,6 +21,7 @@ impl RbacEngine {
   }
   // Check if the claims have access to the resource
   pub fn check(&self, resource: ResourceType) -> bool {
+    tracing::info!("Checking RBAC for resource: {:?}", resource);
     // If there are no rules, everyone has access
     if self.rules.is_empty() {
       return true;
@@ -43,7 +44,7 @@ pub struct Rule {
 }
 
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "type")]
 pub enum ResourceType {

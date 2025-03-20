@@ -7,9 +7,9 @@
   },
   "rules": [
     {
-      "key": "user",
-      "value": "admin",
-      "resource": {"type": "tool", "id": "increment"},
+      "key": "sub",
+      "value": "1234567890",
+      "resource": {"type": "tool", "id": "add"},
       "matcher": {"type": "equals"}
     }
   ],
