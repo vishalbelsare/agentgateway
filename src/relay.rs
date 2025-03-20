@@ -2,8 +2,8 @@ use crate::rbac;
 use crate::rbac::RbacEngine;
 use rmcp::service::RunningService;
 use rmcp::{
-	ClientHandlerService, Error as McpError, RoleServer, ServerHandler,
-	model::CallToolRequestParam, model::Tool, model::*, service::RequestContext,
+	ClientHandlerService, Error as McpError, RoleServer, ServerHandler, model::CallToolRequestParam,
+	model::Tool, model::*, service::RequestContext,
 };
 use std::borrow::Cow;
 use std::collections::HashMap;

@@ -28,9 +28,8 @@ fn session_id() -> SessionId {
 pub struct App {
 	rules: Vec<rbac::Rule>,
 	services: HashMap<String, Arc<Mutex<RunningService<ClientHandlerService>>>>,
-	txs: Arc<
-		tokio::sync::RwLock<HashMap<SessionId, tokio::sync::mpsc::Sender<ClientJsonRpcMessage>>>,
-	>,
+	txs:
+		Arc<tokio::sync::RwLock<HashMap<SessionId, tokio::sync::mpsc::Sender<ClientJsonRpcMessage>>>>,
 }
 
 impl App {
@@ -90,7 +89,8 @@ async fn sse_handler(
 	use tokio_util::sync::PollSender;
 	let (from_client_tx, from_client_rx) = tokio::sync::mpsc::channel(64);
 	let (to_client_tx, to_client_rx) = tokio::sync::mpsc::channel(64);
-	app.txs
+	app
+		.txs
 		.write()
 		.await
 		.insert(session.clone(), from_client_tx);

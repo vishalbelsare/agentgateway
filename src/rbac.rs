@@ -30,8 +30,7 @@ impl RbacEngine {
 		}
 
 		self.rules.iter().any(|rule| {
-			rule.resource.matches(&resource)
-				&& self.claims.matches(&rule.key, &rule.value, &rule.matcher)
+			rule.resource.matches(&resource) && self.claims.matches(&rule.key, &rule.value, &rule.matcher)
 		})
 	}
 }
@@ -60,9 +59,7 @@ impl ResourceType {
 		match (self, other) {
 			(ResourceType::Tool { id: a }, ResourceType::Tool { id: b }) => a == b || a == "*",
 			(ResourceType::Prompt { id: a }, ResourceType::Prompt { id: b }) => a == b || a == "*",
-			(ResourceType::Resource { id: a }, ResourceType::Resource { id: b }) => {
-				a == b || a == "*"
-			}
+			(ResourceType::Resource { id: a }, ResourceType::Resource { id: b }) => a == b || a == "*",
 			_ => false,
 		}
 	}
@@ -115,7 +112,7 @@ fn get_claims(headers: &HeaderMap) -> Option<Claims> {
 			let token = parts[1];
 			let claims = decode_jwt(token);
 			claims
-		}
+		},
 		None => return None,
 	}
 }
@@ -123,14 +120,14 @@ fn get_claims(headers: &HeaderMap) -> Option<Claims> {
 fn decode_jwt(token: &str) -> Option<Claims> {
 	//
 	/*
-	  Split the token into header, payload, and signature.
-	  The parts are separated by a dot (.).
+		Split the token into header, payload, and signature.
+		The parts are separated by a dot (.).
 
-	  For example:
+		For example:
 
-	  eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30
+		eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30
 
-	  {"alg":"HS256","typ":"JWT"}{"sub":"1234567890","name":"John Doe","admin":true,"iat":1516239022}<secret_data>
+		{"alg":"HS256","typ":"JWT"}{"sub":"1234567890","name":"John Doe","admin":true,"iat":1516239022}<secret_data>
 	*/
 	let parts: Vec<&str> = token.splitn(3, ".").collect();
 	if parts.len() < 2 {
@@ -144,12 +141,12 @@ fn decode_jwt(token: &str) -> Option<Claims> {
 			Err(e) => {
 				tracing::info!("Error parsing JWT payload: {}", e);
 				None
-			}
+			},
 		},
 		Err(e) => {
 			println!("Error decoding JWT: {}", e);
 			None
-		}
+		},
 	}
 }
 

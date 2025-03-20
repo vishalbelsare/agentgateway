@@ -1,9 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
 use rmcp::{
-	ClientHandlerService, ServerHandlerService, serve_client, serve_server,
-	service::RunningService, transport::child_process::TokioChildProcess,
-	transport::sse::SseTransport,
+	ClientHandlerService, ServerHandlerService, serve_client, serve_server, service::RunningService,
+	transport::child_process::TokioChildProcess, transport::sse::SseTransport,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -86,7 +85,7 @@ async fn main() -> Result<()> {
 			let file = std::fs::File::open(filename)?;
 			let reader = std::io::BufReader::new(file);
 			serde_json::from_reader(reader)?
-		}
+		},
 		None => Config::new(HashMap::from([
 			(
 				"git".to_string(),
@@ -120,7 +119,7 @@ async fn main() -> Result<()> {
 				.await?;
 				tracing::info!("Connected to stdio server: {name}");
 				servers.spawn(async move { (name, client) });
-			}
+			},
 			Targets::Sse { host, port } => {
 				tracing::info!("Starting sse server: {name}");
 				let transport: SseTransport = SseTransport::start(
@@ -137,7 +136,7 @@ async fn main() -> Result<()> {
 					.unwrap();
 				tracing::info!("Connected to sse server: {name}");
 				servers.spawn(async move { (name, client) });
-			}
+			},
 		}
 	}
 
@@ -163,13 +162,13 @@ async fn main() -> Result<()> {
 				tracing::error!("serving error: {:?}", e);
 			})?;
 			relay.waiting().await?;
-		}
+		},
 		Listener::Sse { host, port } => {
 			let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
 			let app = App::new(services, cfg.rules);
 			let router = app.router();
 			axum::serve(listener, router).await?;
-		}
+		},
 	};
 
 	Ok(())
