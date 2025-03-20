@@ -21,10 +21,15 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing_subscriber::{self, EnvFilter};
-mod relay;
-mod rbac;
 
-use relay::Relay;
+#[allow(warnings)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+mod proto {
+    tonic::include_proto!("envoy.service.discovery.v3");
+}
+
+use mcp_gateway::relay::Relay;
+use mcp_gateway::*;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

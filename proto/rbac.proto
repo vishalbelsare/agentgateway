@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+import "google/protobuf/struct.proto";
+
+package rbac.mcp.kgateway.dev.v1alpha1;
+
+// A rule that defines a resource type and a key-value pair 
+//that can be used to match against a resource.
+message Rule {
+  // The type of resource that the rule applies to.
+  enum ResourceType {
+    TOOL = 0;
+    PROMPT = 1;
+    RESOURCE = 2;
+  }
+
+  // The types of matchers which are supported.
+  enum Matcher {
+    // The value must be equal to the value in the claims.
+    EQUALS = 0;
+  }
+
+  // The key to use when finding the value in the claims.
+  string key = 1;
+
+  // The value to use when matching the value in the claims.
+  string value = 2;
+
+  // The type of resource that the rule applies to.
+  ResourceType resource = 3;
+
+  // The type of matcher to apply to the value once it is retrieved.
+  Matcher matcher = 4;
+}
+
+// A configuration that defines a set of RBAC rules for a given listener
+message Config {
+  // The rules that compose the RBAC configuration.
+  repeated Rule rules = 1;
+}

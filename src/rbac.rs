@@ -1,4 +1,4 @@
-use http::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION};
+use http::header::{HeaderMap, AUTHORIZATION};
 use serde_json::Value;
 use serde_json::map::Map;
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
@@ -199,7 +199,7 @@ fn test_rbac_false_check() {
     resource: ResourceType::Tool{id: "increment".to_string()},
   }];
   let mut headers = HeaderMap::new();
-  headers.insert(AUTHORIZATION, HeaderValue::from_str("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30").unwrap());
+  headers.insert(AUTHORIZATION, http::header::HeaderValue::from_str("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30").unwrap());
   let rbac = RbacEngine::new(rules, Claims::new(&headers));
   assert!(!rbac.check(ResourceType::Tool{id: "increment".to_string()}));
 }
@@ -213,7 +213,7 @@ fn test_rbac_check() {
     resource: ResourceType::Tool{id: "increment".to_string()},
   }];
   let mut headers = HeaderMap::new();
-  headers.insert(AUTHORIZATION, HeaderValue::from_str("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30").unwrap());
+  headers.insert(AUTHORIZATION, http::header::HeaderValue::from_str("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30").unwrap());
   let rbac = RbacEngine::new(rules, Claims::new(&headers));
   assert!(rbac.check(ResourceType::Tool{id: "increment".to_string()}));
 }
