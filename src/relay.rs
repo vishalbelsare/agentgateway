@@ -33,6 +33,62 @@ impl ServerHandler for Relay {
         }
     }
 
+    async fn list_resources(
+        &self,
+        request: PaginatedRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> std::result::Result<ListResourcesResult, McpError> {
+        Ok(ListResourcesResult {
+            resources: vec![],
+            next_cursor: None,
+        })
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> std::result::Result<ReadResourceResult, McpError> {
+        Ok(ReadResourceResult {
+            contents: vec![],
+        })
+    }
+
+    async fn list_resource_templates(
+        &self,
+        request: PaginatedRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> std::result::Result<ListResourceTemplatesResult, McpError> {
+        Ok(ListResourceTemplatesResult {
+            resource_templates: vec![],
+            next_cursor: None,
+        })
+    }
+
+
+
+    async fn list_prompts(
+        &self,
+        request: PaginatedRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> std::result::Result<ListPromptsResult, McpError> {
+        Ok(ListPromptsResult {
+            prompts: vec![],
+            next_cursor: None,
+        })
+    }
+
+    async fn get_prompt(
+      &self,
+      request: GetPromptRequestParam,
+      context: RequestContext<RoleServer>,
+    ) -> std::result::Result<GetPromptResult, McpError> {
+        Ok(GetPromptResult {
+            description: None,
+            messages: vec![],
+        })
+    }
+
     async fn list_tools(
         &self,
         request: PaginatedRequestParam,
