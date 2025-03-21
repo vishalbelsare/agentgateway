@@ -7,10 +7,8 @@ fn main() -> Result<(), anyhow::Error> {
 	let proto_files = [
 		"proto/xds.proto",
 		"proto/rbac.proto",
-		// "proto/workload.proto",
-		// "proto/authorization.proto",
-		// "proto/citadel.proto",
-		// "proto/zds.proto",
+		"proto/listener.proto",
+		"proto/target.proto",
 	]
 	.iter()
 	.map(|name| std::env::current_dir().unwrap().join(name))

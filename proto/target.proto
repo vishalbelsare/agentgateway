@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+import "google/protobuf/struct.proto";
+
+package mcp.kgateway.dev.target.v1alpha1;
+
+message Target {
+  message Stdio {
+    string cmd = 1;
+    repeated string args = 2;
+    map<string, string> env = 3;
+  }
+
+  message Sse {
+    string host = 1;
+    uint32 port = 2;
+  }
+
+  oneof target {
+    Stdio stdio = 1;
+    Sse sse = 2;
+  }
+}
