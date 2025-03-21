@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-everything
+spec:
+  selector:
+    matchLabels:
+      app: mcp-everything
+  template:
+    metadata:
+      labels:
+        app: mcp-everything
+    spec:
+      containers:
+        - name: mcp-everything
+          image: localhost:5000/mcp-everything
+          command: ["node", "dist/sse.js"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-everything
+spec:
+  selector:
+    app: mcp-everything
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3001

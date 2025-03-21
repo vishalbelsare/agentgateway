@@ -1,4 +1,5 @@
 use anyhow::Result;
+use axum::extract::ConnectInfo;
 use axum::{
 	Json, Router,
 	extract::{Query, State},
@@ -15,8 +16,8 @@ use std::sync::Arc;
 use tokio::io::{self};
 use tokio::sync::Mutex;
 
-use crate::rbac;
 use crate::relay::Relay;
+use crate::{proxyprotocol, rbac};
 type SessionId = Arc<str>;
 
 fn session_id() -> SessionId {
@@ -77,14 +78,15 @@ async fn post_event_handler(
 
 async fn sse_handler(
 	State(app): State<App>,
+	ConnectInfo(connection): ConnectInfo<proxyprotocol::Address>,
 	headers: HeaderMap,
 ) -> Sse<impl Stream<Item = Result<Event, io::Error>>> {
 	// it's 4KB
 
-	let claims = rbac::Claims::new(&headers);
+	let claims = rbac::Claims::from_headers_and_connection(&headers, &connection);
 	let rbac = rbac::RbacEngine::new(app.rules, claims);
 	let session = session_id();
-	tracing::info!(%session, "sse connection");
+	tracing::info!(%session, ?connection, "sse connection");
 	use tokio_stream::wrappers::ReceiverStream;
 	use tokio_util::sync::PollSender;
 	let (from_client_tx, from_client_rx) = tokio::sync::mpsc::channel(64);
