@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
+use mcp_gateway::state::{Listener, ListenerMode, Target};
 use rmcp::{
 	ClientHandlerService, ServerHandlerService, serve_client, serve_server, service::RunningService,
 	transport::child_process::TokioChildProcess, transport::sse::SseTransport,
@@ -33,49 +34,17 @@ struct Args {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
 	listener: Option<Listener>,
-	targets: HashMap<String, Targets>,
+	targets: HashMap<String, Target>,
 	rules: Vec<rbac::Rule>,
 }
 
 impl Config {
-	pub fn new(outputs: HashMap<String, Targets>) -> Self {
+	pub fn new(outputs: HashMap<String, Target>) -> Self {
 		Self {
 			listener: Some(Listener::Stdio {}),
 			targets: outputs,
 			rules: vec![],
 		}
-	}
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub enum Targets {
-	#[serde(rename = "sse")]
-	Sse { host: String, port: u16 },
-	#[serde(rename = "stdio")]
-	Stdio { cmd: String, args: Vec<String> },
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub enum Listener {
-	#[serde(rename = "sse")]
-	Sse {
-		host: String,
-		port: u16,
-		mode: Option<ListenerMode>,
-	},
-	#[serde(rename = "stdio")]
-	Stdio {},
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub enum ListenerMode {
-	#[serde(rename = "proxy")]
-	Proxy,
-}
-
-impl Default for Listener {
-	fn default() -> Self {
-		Self::Stdio {}
 	}
 }
 
@@ -102,14 +71,14 @@ async fn main() -> Result<()> {
 		None => Config::new(HashMap::from([
 			(
 				"git".to_string(),
-				Targets::Stdio {
+				Target::Stdio {
 					cmd: "uvx".to_string(),
 					args: vec!["mcp-server-git".to_string()],
 				},
 			),
 			(
 				"everything".to_string(),
-				Targets::Stdio {
+				Target::Stdio {
 					cmd: "npx".to_string(),
 					args: vec![
 						"-y".to_string(),
@@ -123,7 +92,7 @@ async fn main() -> Result<()> {
 	let mut servers = JoinSet::new();
 	for (name, output) in cfg.targets.into_iter() {
 		match output {
-			Targets::Stdio { cmd, args } => {
+			Target::Stdio { cmd, args } => {
 				tracing::info!("Starting stdio server: {name}");
 				let client = serve_client(
 					ClientHandlerService::simple(),
@@ -133,7 +102,7 @@ async fn main() -> Result<()> {
 				tracing::info!("Connected to stdio server: {name}");
 				servers.spawn(async move { (name, client) });
 			},
-			Targets::Sse { host, port } => {
+			Target::Sse { host, port } => {
 				tracing::info!("Starting sse server: {name}");
 				let transport: SseTransport = SseTransport::start(
 					format!("http://{}:{}/sse", host, port).as_str(),

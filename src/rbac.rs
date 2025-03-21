@@ -1,10 +1,11 @@
 use crate::proxyprotocol::Address;
+use crate::xds::mcp::kgateway_dev::rbac::Rule as XdsRule;
+use crate::xds::mcp::kgateway_dev::rbac::rule;
 use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
 use http::header::{AUTHORIZATION, HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::map::Map;
-
 #[derive(Clone)]
 pub struct RbacEngine {
 	rules: Vec<Rule>,
@@ -45,6 +46,17 @@ pub struct Rule {
 	resource: ResourceType,
 }
 
+impl From<&XdsRule> for Rule {
+	fn from(value: &XdsRule) -> Self {
+		Rule {
+			key: value.key.clone(),
+			value: value.value.clone(),
+			matcher: Matcher::from(&value.matcher.try_into().unwrap()),
+			resource: ResourceType::from(&value.resource.unwrap()),
+		}
+	}
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "type")]
@@ -52,6 +64,23 @@ pub enum ResourceType {
 	Tool { id: String },
 	Prompt { id: String },
 	Resource { id: String },
+}
+
+impl From<&rule::Resource> for ResourceType {
+	fn from(value: &rule::Resource) -> Self {
+		match value.r#type.try_into() {
+			Ok(rule::resource::ResourceType::Tool) => ResourceType::Tool {
+				id: value.id.clone(),
+			},
+			Ok(rule::resource::ResourceType::Prompt) => ResourceType::Prompt {
+				id: value.id.clone(),
+			},
+			Ok(rule::resource::ResourceType::Resource) => ResourceType::Resource {
+				id: value.id.clone(),
+			},
+			_ => panic!("Invalid resource type"),
+		}
+	}
 }
 
 impl ResourceType {
@@ -71,6 +100,14 @@ impl ResourceType {
 #[serde(tag = "type")]
 pub enum Matcher {
 	Equals,
+}
+
+impl From<&rule::Matcher> for Matcher {
+	fn from(value: &rule::Matcher) -> Self {
+		match value {
+			rule::Matcher::Equals => Matcher::Equals,
+		}
+	}
 }
 
 #[derive(Serialize, Deserialize, Clone)]
