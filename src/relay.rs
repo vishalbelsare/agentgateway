@@ -124,7 +124,7 @@ impl ServerHandler for Relay {
 		if !self.rbac.check(rbac::ResourceType::Tool {
 			id: request.name.to_string(),
 		}) {
-			return Err(McpError::method_not_found::<CallToolRequestMethod>());
+			return Err(McpError::invalid_request("not allowed", None));
 		}
 		let tool_name = request.name.to_string();
 		let (service_name, tool) = tool_name.split_once(':').unwrap();
