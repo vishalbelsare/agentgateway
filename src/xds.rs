@@ -13,12 +13,10 @@
 // limitations under the License.
 
 use bytes::Bytes;
-use std::collections::HashMap;
 use std::error::Error as StdErr;
 use std::fmt;
 use std::fmt::Formatter;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use tracing::Level;
 
@@ -29,22 +27,14 @@ use tracing::{debug, error, info, instrument, trace, warn};
 pub use client::*;
 pub use metrics::*;
 pub use types::*;
-use xds::istio::security::Authorization as XdsAuthorization;
-use xds::istio::workload::Address as XdsAddress;
-use xds::istio::workload::PortList;
-use xds::istio::workload::Service as XdsService;
-use xds::istio::workload::Workload as XdsWorkload;
-use xds::istio::workload::address::Type as XdsType;
 
-use xds::mcp::kgateway_dev::listener::Listener as XdsListener;
 use xds::mcp::kgateway_dev::rbac::Config as XdsRbac;
 use xds::mcp::kgateway_dev::target::Target as XdsTarget;
 
-use crate::rbac::Rule;
-use crate::state::{Listener, Target};
+use crate::state::{Listener, State as ProxyState, Target};
 use crate::strng::Strng;
 use crate::xds;
-use crate::{rbac, strng};
+use crate::{rbac};
 
 use self::envoy::service::discovery::v3::DeltaDiscoveryRequest;
 
@@ -90,10 +80,12 @@ pub enum Error {
 	/// Attempted to send on a MPSC channel which has been canceled
 	#[error(transparent)]
 	RequestFailure(#[from] Box<mpsc::error::SendError<DeltaDiscoveryRequest>>),
-	#[error("failed to send on demand resource")]
-	OnDemandSend(),
-	#[error("TLS Error: {0}")]
-	TLSError(#[from] tls::Error),
+	#[error("transport error: {0}")]
+	Transport(#[from] tonic::transport::Error),
+	// #[error("failed to send on demand resource")]
+	// OnDemandSend(),
+	// #[error("TLS Error: {0}")]
+	// TLSError(#[from] tls::Error),
 }
 
 /// Updates the [ProxyState] from XDS.
@@ -116,264 +108,50 @@ impl ProxyStateUpdater {
 			updater: ProxyStateUpdateMutator {},
 		}
 	}
-	/// Creates a new updater that does not prefetch workload certs.
-	pub fn new_no_fetch(state: Arc<RwLock<ProxyState>>) -> Self {
-		Self {
-			state,
-			updater: ProxyStateUpdateMutator::new_no_fetch(),
-		}
-	}
 }
 
 impl ProxyStateUpdateMutator {
-	/// Creates a new updater that does not prefetch workload certs.
-	pub fn new_no_fetch() -> Self {
-		ProxyStateUpdateMutator {}
+	#[instrument(
+        level = Level::TRACE,
+        name="insert_target",
+        skip_all,
+        fields(name=%target.name),
+    )]
+	pub fn insert_target(&self, state: &mut ProxyState, target: XdsTarget) -> anyhow::Result<()> {
+		let target = Target::from(&target);
+		state.targets.insert(target);
+		Ok(())
 	}
 
 	#[instrument(
         level = Level::TRACE,
-        name="insert_workload",
+        name="remove_target",
         skip_all,
-        fields(uid=%w.uid),
+        fields(name=%xds_name),
     )]
-	pub fn insert_workload(&self, state: &mut ProxyState, w: XdsWorkload) -> anyhow::Result<()> {
-		debug!("handling insert");
-
-		// Clone services, so we can pass full ownership of the rest of XdsWorkload to build our Workload
-		// object, which doesn't include Services.
-		// In theory, I think we could avoid this if Workload::try_from returning the services.
-		// let services = w.services.clone();
-		// Convert the workload.
-		let (workload, services): (Workload, HashMap<String, PortList>) = w.try_into()?;
-		let workload = Arc::new(workload);
-
-		// First, remove the entry entirely to make sure things are cleaned up properly.
-		self.remove_workload_for_insert(state, &workload.uid);
-
-		// Prefetch the cert for the workload.
-		self.cert_fetcher.prefetch_cert(&workload);
-
-		// Lock and upstate the stores.
-		state.workloads.insert(workload.clone());
-		insert_service_endpoints(&workload, &services, &mut state.services)?;
-
-		Ok(())
-	}
-
-	pub fn remove(&self, state: &mut ProxyState, xds_name: &Strng) {
-		self.remove_internal(state, xds_name, false);
-	}
-
-	fn remove_workload_for_insert(&self, state: &mut ProxyState, xds_name: &Strng) {
-		self.remove_internal(state, xds_name, true);
+	pub fn remove_target(&self, state: &mut ProxyState, xds_name: &Strng) {
+		state.targets.remove(xds_name);
 	}
 
 	#[instrument(
         level = Level::TRACE,
-        name="remove",
+        name="insert_rbac",
         skip_all,
-        fields(name=%xds_name, for_workload_insert=%for_workload_insert),
     )]
-	fn remove_internal(&self, state: &mut ProxyState, xds_name: &Strng, for_workload_insert: bool) {
-		// remove workload by UID; if xds_name is a service then this will no-op
-		if let Some(prev) = state.workloads.remove(&strng::new(xds_name)) {
-			// Also remove service endpoints for the workload.
-			state.services.remove_endpoint(&prev);
-			// We removed a workload, no reason to attempt to remove a service with the same name
-			return;
-		}
-		if for_workload_insert {
-			// This is a workload, don't attempt to remove as a service
-			return;
-		}
-
-		let Ok(name) = NamespacedHostname::from_str(xds_name) else {
-			// we don't have namespace/hostname xds primary key for service
-			warn!("tried to remove service but it did not have the expected namespace/hostname format");
-			return;
-		};
-
-		if name.hostname.contains('/') {
-			// avoid trying to delete obvious workload UIDs as a service,
-			// which can result in noisy logs when new workloads are added
-			// (we remove then add workloads on initial update)
-			//
-			// we can make this assumption because namespaces and hostnames cannot have `/` in them
-			trace!("not a service, not attempting to delete as such",);
-			return;
-		}
-		if !state.services.remove(&name) {
-			warn!("tried to remove service, but it was not found");
-		}
-	}
-
-	pub fn insert_address(&self, state: &mut ProxyState, a: XdsAddress) -> anyhow::Result<()> {
-		match a.r#type {
-			Some(XdsType::Workload(w)) => self.insert_workload(state, w),
-			Some(XdsType::Service(s)) => self.insert_service(state, s),
-			_ => Err(anyhow::anyhow!("unknown address type")),
-		}
+	pub fn insert_rbac(&self, state: &mut ProxyState, rbac: XdsRbac) -> anyhow::Result<()> {
+		let rule_set = rbac::RuleSet::from(&rbac);
+		state.policies.insert(rule_set);
+		Ok(())
 	}
 
 	#[instrument(
         level = Level::TRACE,
-        name="insert_service",
+        name="remove_rbac",
         skip_all,
-        fields(name=%service.name),
+        fields(name=%xds_name),
     )]
-	pub fn insert_service(&self, state: &mut ProxyState, service: XdsService) -> anyhow::Result<()> {
-		debug!("handling insert");
-		let mut service = Service::try_from(&service)?;
-
-		// If the service already exists, add existing endpoints into the new service.
-		if let Some(prev) = state
-			.services
-			.get_by_namespaced_host(&service.namespaced_hostname())
-		{
-			for ep in prev.endpoints.iter() {
-				if service.should_include_endpoint(ep.status) {
-					service
-						.endpoints
-						.insert(ep.workload_uid.clone(), ep.clone());
-				}
-			}
-		}
-
-		state.services.insert(service);
-		Ok(())
-	}
-
-	pub fn insert_authorization(
-		&self,
-		state: &mut ProxyState,
-		xds_name: Strng,
-		r: XdsAuthorization,
-	) -> anyhow::Result<()> {
-		info!("handling RBAC update {}", r.name);
-
-		let rbac = rbac::Authorization::try_from(r)?;
-		trace!(
-			"insert policy {}, {}",
-			xds_name,
-			serde_json::to_string(&rbac)?
-		);
-		state.policies.insert(xds_name, rbac);
-		Ok(())
-	}
-
-	pub fn remove_authorization(&self, state: &mut ProxyState, xds_name: Strng) {
-		info!("handling RBAC delete {}", xds_name);
+	pub fn remove_rbac(&self, state: &mut ProxyState, xds_name: &Strng) {
 		state.policies.remove(xds_name);
-	}
-}
-
-impl Handler<XdsWorkload> for ProxyStateUpdater {
-	fn handle(
-		&self,
-		updates: Box<&mut dyn Iterator<Item = XdsUpdate<XdsWorkload>>>,
-	) -> Result<(), Vec<RejectedConfig>> {
-		// use deepsize::DeepSizeOf;
-		let mut state = self.state.write().unwrap();
-		let handle = |res: XdsUpdate<XdsWorkload>| {
-			match res {
-				XdsUpdate::Update(w) => self.updater.insert_workload(&mut state, w.resource)?,
-				XdsUpdate::Remove(name) => {
-					debug!("handling delete {}", name);
-					self.updater.remove(&mut state, &strng::new(name))
-				},
-			}
-			Ok(())
-		};
-		handle_single_resource(updates, handle)
-	}
-}
-
-impl Handler<XdsAddress> for ProxyStateUpdater {
-	fn handle(
-		&self,
-		updates: Box<&mut dyn Iterator<Item = XdsUpdate<XdsAddress>>>,
-	) -> Result<(), Vec<RejectedConfig>> {
-		let mut state = self.state.write().unwrap();
-		let handle = |res: XdsUpdate<XdsAddress>| {
-			match res {
-				XdsUpdate::Update(w) => self.updater.insert_address(&mut state, w.resource)?,
-				XdsUpdate::Remove(name) => {
-					debug!("handling delete {}", name);
-					self.updater.remove(&mut state, &strng::new(name))
-				},
-			}
-			Ok(())
-		};
-		handle_single_resource(updates, handle)
-	}
-}
-
-fn insert_service_endpoints(
-	workload: &Workload,
-	services: &HashMap<String, PortList>,
-	services_state: &mut ServiceStore,
-) -> anyhow::Result<()> {
-	for (namespaced_host, ports) in services {
-		// Parse the namespaced hostname for the service.
-		let namespaced_host = match namespaced_host.split_once('/') {
-			Some((namespace, hostname)) => NamespacedHostname {
-				namespace: namespace.into(),
-				hostname: hostname.into(),
-			},
-			None => {
-				return Err(anyhow::anyhow!(
-					"failed parsing service name: {namespaced_host}"
-				));
-			},
-		};
-
-		services_state.insert_endpoint(
-			namespaced_host,
-			Endpoint {
-				workload_uid: workload.uid.clone(),
-				port: ports.into(),
-				status: workload.status,
-			},
-		)
-	}
-	Ok(())
-}
-
-impl Handler<XdsAuthorization> for ProxyStateUpdater {
-	fn no_on_demand(&self) -> bool {
-		true
-	}
-
-	fn handle(
-		&self,
-		updates: Box<&mut dyn Iterator<Item = XdsUpdate<XdsAuthorization>>>,
-	) -> Result<(), Vec<RejectedConfig>> {
-		let mut state = self.state.write().unwrap();
-		let handle = |res: XdsUpdate<XdsAuthorization>| {
-			match res {
-				XdsUpdate::Update(w) => self
-					.updater
-					.insert_authorization(&mut state, w.name, w.resource)?,
-				XdsUpdate::Remove(name) => self.updater.remove_authorization(&mut state, name),
-			}
-			Ok(())
-		};
-		let mut len_updates = 0;
-		let updates = updates.inspect(|_| len_updates += 1);
-		match handle_single_resource(updates, handle) {
-			Ok(()) => {
-				state.policies.send();
-				Ok(())
-			},
-			Err(e) => {
-				if e.len() < len_updates {
-					// not all config was rejected, we have _some_ valide update
-					state.policies.send();
-				}
-				Err(e)
-			},
-		}
 	}
 }
 
@@ -382,95 +160,73 @@ impl Handler<XdsTarget> for ProxyStateUpdater {
 		&self,
 		updates: Box<&mut dyn Iterator<Item = XdsUpdate<XdsTarget>>>,
 	) -> Result<(), Vec<RejectedConfig>> {
-		Ok(())
+		let mut state = self.state.write().unwrap();
+		let handle = |res: XdsUpdate<XdsTarget>| {
+			match res {
+				XdsUpdate::Update(w) => self.updater.insert_target(&mut state, w.resource)?,
+				XdsUpdate::Remove(name) => self.updater.remove_target(&mut state, &name),
+			}
+			Ok(())
+		};
+		handle_single_resource(updates, handle)
 	}
 }
-#[derive(Clone, Debug)]
-pub enum ConfigSource {
-	File(PathBuf),
-	Static(Bytes),
-}
 
-impl ConfigSource {
-	pub async fn read_to_string(&self) -> anyhow::Result<String> {
-		Ok(match self {
-			ConfigSource::File(path) => tokio::fs::read_to_string(path).await?,
-			ConfigSource::Static(data) => std::str::from_utf8(data).map(|s| s.to_string())?,
-			#[cfg(any(test, feature = "testing"))]
-			_ => "{}".to_string(),
-		})
+impl Handler<XdsRbac> for ProxyStateUpdater {
+	fn handle(
+		&self,
+		updates: Box<&mut dyn Iterator<Item = XdsUpdate<XdsRbac>>>,
+	) -> Result<(), Vec<RejectedConfig>> {
+		let mut state = self.state.write().unwrap();
+		let handle = |res: XdsUpdate<XdsRbac>| {
+			match res {
+				XdsUpdate::Update(w) => self.updater.insert_rbac(&mut state, w.resource)?,
+				XdsUpdate::Remove(name) => self.updater.remove_rbac(&mut state, &name),
+			}
+			Ok(())
+		};
+		handle_single_resource(updates, handle)
 	}
 }
 
 /// LocalClient serves as a local file reader alternative for XDS. This is intended for testing.
 pub struct LocalClient {
-	pub cfg: ConfigSource,
+	pub cfg: LocalConfig,
 	pub state: Arc<RwLock<ProxyState>>,
-	pub local_node: Option<Strng>,
-}
-
-#[derive(Debug, Eq, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LocalWorkload {
-	#[serde(flatten)]
-	pub workload: Workload,
-	pub services: HashMap<String, HashMap<u16, u16>>,
 }
 
 #[derive(Default, Debug, Eq, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LocalConfig {
 	#[serde(default)]
-	pub workloads: Vec<LocalWorkload>,
+	pub targets: Vec<Target>,
 	#[serde(default)]
-	pub policies: Vec<Authorization>,
+	pub policies: Vec<rbac::Rule>,
 	#[serde(default)]
-	pub services: Vec<Service>,
+	pub listener: Listener,
 }
+
 
 impl LocalClient {
 	#[instrument(skip_all, name = "local_client")]
 	pub async fn run(self) -> Result<(), anyhow::Error> {
-		// Load initial state
-		let r: LocalConfig = serde_yaml::from_str(&self.cfg.read_to_string().await?)?;
-		self.load_config(r)?;
-		Ok(())
-	}
-
-	fn load_config(&self, r: LocalConfig) -> anyhow::Result<()> {
 		debug!(
 			"load local config: {}",
-			serde_yaml::to_string(&r).unwrap_or_default()
+			serde_yaml::to_string(&self.cfg).unwrap_or_default()
 		);
 		let mut state = self.state.write().unwrap();
 		// Clear the state
-		state.workloads = WorkloadStore::new(self.local_node.clone());
-		state.services = Default::default();
-		// Policies have some channels, so we don't want to reset it entirely
-		state.policies.clear_all_policies();
-		let num_workloads = r.workloads.len();
-		let num_policies = r.policies.len();
-		for wl in r.workloads {
-			trace!("inserting local workload {}", &wl.workload.uid);
-			let w = Arc::new(wl.workload);
-			state.workloads.insert(w.clone());
-
-			let services: HashMap<String, PortList> = wl
-				.services
-				.into_iter()
-				.map(|(k, v)| (k, PortList::from(v)))
-				.collect();
-
-			insert_service_endpoints(&w, &services, &mut state.services)?;
+		state.targets.clear();
+		state.policies.clear();
+		let num_targets = self.cfg.targets.len();
+		let num_policies = self.cfg.policies.len();
+		for target in self.cfg.targets {
+			trace!("inserting target {}", &target.name);
+			state.targets.insert(target).await;
 		}
-		for rbac in r.policies {
-			let xds_name = rbac.to_key();
-			state.policies.insert(xds_name, rbac);
-		}
-		for svc in r.services {
-			state.services.insert(svc);
-		}
-		info!(%num_workloads, %num_policies, "local config initialized");
+		let rule_set = rbac::RuleSet::new("test".to_string(), "test".to_string(), self.cfg.policies);
+		state.policies.insert(rule_set);
+		info!(%num_targets, %num_policies, "local config initialized");
 		Ok(())
 	}
 }

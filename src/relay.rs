@@ -1,5 +1,5 @@
 use crate::rbac;
-use crate::rbac::RbacEngine;
+use crate::state::State;
 use rmcp::service::RunningService;
 use rmcp::{
 	ClientHandlerService, Error as McpError, RoleServer, ServerHandler, model::CallToolRequestParam,
@@ -11,8 +11,14 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 #[derive(Clone)]
 pub struct Relay {
-	pub rbac: RbacEngine,
-	pub services: HashMap<String, Arc<Mutex<RunningService<ClientHandlerService>>>>,
+	state: Arc<State>,
+	id: rbac::Claims,
+}
+
+impl Relay {
+	pub fn new(state: Arc<State>, id: rbac::Claims) -> Self {
+		Self { state, id }
+	}
 }
 
 impl ServerHandler for Relay {
@@ -93,10 +99,10 @@ impl ServerHandler for Relay {
 		context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListToolsResult, McpError> {
 		let mut tools = Vec::new();
-		for (name, service) in self.services.iter() {
+		for (name, service) in self.state.targets.iter_connections() {
 			let result = service
 				.as_ref()
-				.lock()
+				.read()
 				.await
 				.list_tools(request.clone())
 				.await
@@ -121,20 +127,20 @@ impl ServerHandler for Relay {
 		request: CallToolRequestParam,
 		context: RequestContext<RoleServer>,
 	) -> std::result::Result<CallToolResult, McpError> {
-		if !self.rbac.check(rbac::ResourceType::Tool {
-			id: request.name.to_string(),
-		}) {
-			return Err(McpError::invalid_request("not allowed", None));
-		}
+		// if !self.rbac.check(rbac::ResourceType::Tool {
+		// 	id: request.name.to_string(),
+		// }) {
+		// 	return Err(McpError::invalid_request("not allowed", None));
+		// }
 		let tool_name = request.name.to_string();
 		let (service_name, tool) = tool_name.split_once(':').unwrap();
-		let service = self.services.get(service_name).unwrap();
+		let service = self.state.targets.get_connection(service_name).unwrap();
 		let req = CallToolRequestParam {
 			name: Cow::Owned(tool.to_string()),
 			arguments: request.arguments,
 		};
 
-		let result = service.as_ref().lock().await.call_tool(req).await.unwrap();
+		let result = service.as_ref().read().await.call_tool(req).await.unwrap();
 		Ok(result)
 	}
 }

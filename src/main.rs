@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use mcp_gateway::state::{Listener, ListenerMode, Target};
+use mcp_gateway::state::{Listener, ListenerMode, Target, TargetSpec};
 use prometheus_client::registry::Registry;
 use rmcp::{
 	ClientHandlerService, ServerHandlerService, serve_client, serve_server, service::RunningService,
@@ -13,6 +13,8 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing_subscriber::{self, EnvFilter};
+use config::Config as XdsConfig;
+use xds::LocalConfig;
 #[allow(warnings)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 mod proto {
@@ -27,26 +29,20 @@ use mcp_gateway::*;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-	/// Sets a custom config file
+	/// Use config from bytes
 	#[arg(short, long, value_name = "config")]
-	config: Option<std::path::PathBuf>,
+	config: Option<bytes::Bytes>,
+
+  /// Use config from file
+  #[arg(short, long, value_name = "file")]
+  file: Option<std::path::PathBuf>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Config {
-	listener: Option<Listener>,
-	targets: HashMap<String, Target>,
-	rules: Vec<rbac::Rule>,
-}
-
-impl Config {
-	pub fn new(outputs: HashMap<String, Target>) -> Self {
-		Self {
-			listener: Some(Listener::Stdio {}),
-			targets: outputs,
-			rules: vec![],
-		}
-	}
+pub enum Config {
+  #[serde(rename_all = "camelCase")]
+  Local(LocalConfig),
+  Xds(XdsConfig),
 }
 
 #[tokio::main]
@@ -59,38 +55,34 @@ async fn main() -> Result<()> {
 		.with_ansi(false)
 		.init();
 
-	let registry = Registry::new();
+	let registry = Registry::default();
 
 	let args = Args::parse();
-	let cfg = match args.config {
-		Some(filename) => {
-			let file = std::fs::File::open(filename)?;
-			let mut reader = std::io::BufReader::new(file);
-			let deserializer = serde_yaml::Deserializer::from_reader(&mut reader);
-			// Use the more obscure singleton_map_recursive single serde_yaml otherwise excepts
-			// an obscure YAML-specific tagging format for enums
-			serde_yaml::with::singleton_map_recursive::deserialize::<Config, _>(deserializer)?
-		},
-		None => Config::new(HashMap::from([
-			(
-				"git".to_string(),
-				Target::Stdio {
-					cmd: "uvx".to_string(),
-					args: vec!["mcp-server-git".to_string()],
-				},
-			),
-			(
-				"everything".to_string(),
-				Target::Stdio {
-					cmd: "npx".to_string(),
-					args: vec![
-						"-y".to_string(),
-						"@modelcontextprotocol/server-everything".to_string(),
-					],
-				},
-			),
-		])),
-	};
+
+  // if args.file.is_none() && args.config.is_none() {
+  //   eprintln!("Error: either --file or --config must be provided, exiting");
+  //   std::process::exit(1);
+  // }
+  
+  let cfg: Config = match (args.file, args.config) {
+    (Some(filename), None) => {
+      let file = tokio::fs::read_to_string(filename).await?;
+      serde_yaml::from_str(&file)?
+    },
+    (None, Some(config)) => {
+      let file = std::str::from_utf8(&config).map(|s| s.to_string())?;
+      serde_yaml::from_str(&file)?
+    },
+    (Some(_), Some(_)) => {
+      eprintln!("config error: both --file and --config cannot be provided, exiting");
+      std::process::exit(1);
+    },
+    (None, None) => {
+      eprintln!("Error: either --file or --config must be provided, exiting");
+      std::process::exit(1);
+    },
+  };
+
 
 	let mut servers = JoinSet::new();
 	for (name, output) in cfg.targets.into_iter() {
@@ -152,7 +144,7 @@ async fn main() -> Result<()> {
 		},
 		Listener::Sse { host, port, mode } => {
 			let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
-			let app = SseApp::new(services, cfg.rules);
+			let app = SseApp::new();
 			let router = app.router();
 
 			let enable_proxy = Some(ListenerMode::Proxy) == mode;
@@ -160,17 +152,17 @@ async fn main() -> Result<()> {
 			let listener = proxyprotocol::Listener::new(listener, enable_proxy);
 			let svc = router.into_make_service_with_connect_info::<proxyprotocol::Address>();
 			run_set.spawn(async move {
-				axum::serve(listener, svc).await?;
+				axum::serve(listener, svc).await;
 			});
 		},
 	};
 
 	// Add metrics listener
-	let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
-	let app = MetricsApp::new(registry);
+	let listener = tokio::net::TcpListener::bind("0.0.0.0:19000").await?;
+	let app = MetricsApp::new(Arc::new(registry));
 	let router = app.router();
 	run_set.spawn(async move {
-		axum::serve(listener, router).await?;
+		axum::serve(listener, router).await;
 	});
 
 	// Wait for all servers to finish? I think this does what I want :shrug:

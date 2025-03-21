@@ -22,7 +22,7 @@ message Rule {
       PROMPT = 1;
       RESOURCE = 2;
     }
-    
+
     string id = 1;
     // The type of resource that the rule applies to.
     ResourceType type = 2;
@@ -43,6 +43,10 @@ message Rule {
 
 // A configuration that defines a set of RBAC rules for a given listener
 message Config {
+  // The name of the RBAC configuration.
+  string name = 1;
+  // The namespace of the RBAC configuration.
+  string namespace = 2;
   // The rules that compose the RBAC configuration.
-  repeated Rule rules = 1;
+  repeated Rule rules = 3;
 }

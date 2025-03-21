@@ -1,3 +1,4 @@
+use crate::state::State as AppState;
 use anyhow::Result;
 use axum::extract::ConnectInfo;
 use axum::{
@@ -14,7 +15,6 @@ use rmcp::{
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{self};
-use tokio::sync::Mutex;
 
 use crate::relay::Relay;
 use crate::{proxyprotocol, rbac};
@@ -25,23 +25,18 @@ fn session_id() -> SessionId {
 	Arc::from(id)
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct App {
-	rules: Vec<rbac::Rule>,
-	services: HashMap<String, Arc<Mutex<RunningService<ClientHandlerService>>>>,
+	state: Arc<AppState>,
 	txs:
 		Arc<tokio::sync::RwLock<HashMap<SessionId, tokio::sync::mpsc::Sender<ClientJsonRpcMessage>>>>,
 }
 
 impl App {
-	pub fn new(
-		services: HashMap<String, Arc<Mutex<RunningService<ClientHandlerService>>>>,
-		rules: Vec<rbac::Rule>,
-	) -> Self {
+	pub fn new(state: Arc<AppState>) -> Self {
 		Self {
-			rules,
+			state,
 			txs: Default::default(),
-			services,
 		}
 	}
 	pub fn router(&self) -> Router {
@@ -84,7 +79,6 @@ async fn sse_handler(
 	// it's 4KB
 
 	let claims = rbac::Claims::from_headers_and_connection(&headers, &connection);
-	let rbac = rbac::RbacEngine::new(app.rules, claims);
 	let session = session_id();
 	tracing::info!(%session, ?connection, "sse connection");
 	use tokio_stream::wrappers::ReceiverStream;
@@ -99,10 +93,7 @@ async fn sse_handler(
 	{
 		let session = session.clone();
 		tokio::spawn(async move {
-			let service = ServerHandlerService::new(Relay {
-				services: app.services,
-				rbac,
-			});
+			let service = ServerHandlerService::new(Relay::new(app.state.clone(), claims));
 			let stream = ReceiverStream::new(from_client_rx);
 			let sink = PollSender::new(to_client_tx).sink_map_err(std::io::Error::other);
 			let result = serve_server(service, (sink, stream))

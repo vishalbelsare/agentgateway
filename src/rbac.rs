@@ -1,6 +1,6 @@
 use crate::proxyprotocol::Address;
-use crate::xds::mcp::kgateway_dev::rbac::Rule as XdsRule;
 use crate::xds::mcp::kgateway_dev::rbac::rule;
+use crate::xds::mcp::kgateway_dev::rbac::{Config as XdsRuleSet, Rule as XdsRule};
 use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
 use http::header::{AUTHORIZATION, HeaderMap};
 use serde::{Deserialize, Serialize};
@@ -37,7 +37,41 @@ impl RbacEngine {
 	}
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleSet {
+	pub name: String,
+	pub namespace: String,
+	pub rules: Vec<Rule>,
+}
+
+impl RuleSet {
+	pub fn new(name: String, namespace: String, rules: Vec<Rule>) -> Self {
+		Self {
+			name,
+			namespace,
+			rules,
+		}
+	}
+}
+
+impl From<&XdsRuleSet> for RuleSet {
+	fn from(value: &XdsRuleSet) -> Self {
+		Self {
+			name: value.name.clone(),
+			namespace: value.namespace.clone(),
+			rules: value.rules.iter().map(|rule| Rule::from(rule)).collect(),
+		}
+	}
+}
+
+impl RuleSet {
+	pub fn to_key(&self) -> String {
+		format!("{}.{}", self.namespace, self.name)
+	}
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Rule {
 	key: String,
@@ -52,12 +86,12 @@ impl From<&XdsRule> for Rule {
 			key: value.key.clone(),
 			value: value.value.clone(),
 			matcher: Matcher::from(&value.matcher.try_into().unwrap()),
-			resource: ResourceType::from(&value.resource.unwrap()),
+			resource: ResourceType::from(value.resource.as_ref().unwrap()),
 		}
 	}
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "type")]
 pub enum ResourceType {
@@ -95,7 +129,7 @@ impl ResourceType {
 	}
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "type")]
 pub enum Matcher {
