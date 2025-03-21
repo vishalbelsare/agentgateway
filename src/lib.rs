@@ -4,6 +4,7 @@ pub mod metrics;
 pub mod proxyprotocol;
 pub mod rbac;
 pub mod relay;
+pub mod signal;
 pub mod sse;
 pub mod state;
 pub mod strng;

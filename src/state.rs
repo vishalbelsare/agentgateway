@@ -20,6 +20,7 @@ pub struct Target {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[serde(tag = "type")]
 pub enum TargetSpec {
 	#[serde(rename = "sse")]
 	Sse { host: String, port: u32 },

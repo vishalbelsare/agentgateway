@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
+use config::Config as XdsConfig;
 use mcp_gateway::state::{Listener, ListenerMode, Target, TargetSpec};
 use prometheus_client::registry::Registry;
 use rmcp::{
@@ -9,21 +10,17 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::RwLock;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing_subscriber::{self, EnvFilter};
-use config::Config as XdsConfig;
-use xds::LocalConfig;
-#[allow(warnings)]
-#[allow(clippy::derive_partial_eq_without_eq)]
-mod proto {
-	tonic::include_proto!("envoy.service.discovery.v3");
-}
+use xds::{LocalConfig, run_local_client};
 
 use mcp_gateway::metrics::App as MetricsApp;
 use mcp_gateway::relay::Relay;
 use mcp_gateway::sse::App as SseApp;
+use mcp_gateway::state::State as ProxyState;
 use mcp_gateway::*;
 
 #[derive(Parser, Debug)]
@@ -33,16 +30,18 @@ struct Args {
 	#[arg(short, long, value_name = "config")]
 	config: Option<bytes::Bytes>,
 
-  /// Use config from file
-  #[arg(short, long, value_name = "file")]
-  file: Option<std::path::PathBuf>,
+	/// Use config from file
+	#[arg(short, long, value_name = "file")]
+	file: Option<std::path::PathBuf>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum Config {
-  #[serde(rename_all = "camelCase")]
-  Local(LocalConfig),
-  Xds(XdsConfig),
+	#[serde(rename = "local")]
+	Local(LocalConfig),
+	#[serde(rename = "xds")]
+	Xds(XdsConfig),
 }
 
 #[tokio::main]
@@ -59,103 +58,43 @@ async fn main() -> Result<()> {
 
 	let args = Args::parse();
 
-  // if args.file.is_none() && args.config.is_none() {
-  //   eprintln!("Error: either --file or --config must be provided, exiting");
-  //   std::process::exit(1);
-  // }
-  
-  let cfg: Config = match (args.file, args.config) {
-    (Some(filename), None) => {
-      let file = tokio::fs::read_to_string(filename).await?;
-      serde_yaml::from_str(&file)?
-    },
-    (None, Some(config)) => {
-      let file = std::str::from_utf8(&config).map(|s| s.to_string())?;
-      serde_yaml::from_str(&file)?
-    },
-    (Some(_), Some(_)) => {
-      eprintln!("config error: both --file and --config cannot be provided, exiting");
-      std::process::exit(1);
-    },
-    (None, None) => {
-      eprintln!("Error: either --file or --config must be provided, exiting");
-      std::process::exit(1);
-    },
-  };
+	// if args.file.is_none() && args.config.is_none() {
+	//   eprintln!("Error: either --file or --config must be provided, exiting");
+	//   std::process::exit(1);
+	// }
 
+	let cfg: Config = match (args.file, args.config) {
+		(Some(filename), None) => {
+			let file = tokio::fs::read_to_string(filename).await?;
+			serde_json::from_str(&file)?
+		},
+		(None, Some(config)) => {
+			let file = std::str::from_utf8(&config).map(|s| s.to_string())?;
+			serde_json::from_str(&file)?
+		},
+		(Some(_), Some(_)) => {
+			eprintln!("config error: both --file and --config cannot be provided, exiting");
+			std::process::exit(1);
+		},
+		(None, None) => {
+			eprintln!("Error: either --file or --config must be provided, exiting");
+			std::process::exit(1);
+		},
+	};
 
-	let mut servers = JoinSet::new();
-	for (name, output) in cfg.targets.into_iter() {
-		match output {
-			Target::Stdio { cmd, args } => {
-				tracing::info!("Starting stdio server: {name}");
-				let client = serve_client(
-					ClientHandlerService::simple(),
-					TokioChildProcess::new(Command::new(cmd).args(args))?,
-				)
-				.await?;
-				tracing::info!("Connected to stdio server: {name}");
-				servers.spawn(async move { (name, client) });
-			},
-			Target::Sse { host, port } => {
-				tracing::info!("Starting sse server: {name}");
-				let transport: SseTransport = SseTransport::start(
-					format!("http://{}:{}/sse", host, port).as_str(),
-					Default::default(),
-				)
-				.await?;
-
-				let client = serve_client(ClientHandlerService::simple(), transport)
-					.await
-					.inspect_err(|e| {
-						tracing::error!("client error: {:?}", e);
-					})
-					.unwrap();
-				tracing::info!("Connected to sse server: {name}");
-				servers.spawn(async move { (name, client) });
-			},
-		}
-	}
-
-	let mut services: HashMap<String, Arc<Mutex<RunningService<ClientHandlerService>>>> =
-		HashMap::new();
-	while let Some(result) = servers.join_next().await {
-		let (name, client) = result?;
-		services.insert(name.to_string(), Arc::new(Mutex::new(client)));
-	}
+	let local = match cfg {
+		Config::Local(cfg) => cfg,
+		Config::Xds(_) => {
+			eprintln!("XDS config not supported yet");
+			std::process::exit(1);
+		},
+	};
 
 	let mut run_set = JoinSet::new();
 
-	// Create an instance of our counter router
-	match cfg.listener.unwrap_or_default() {
-		Listener::Stdio {} => {
-			let relay = serve_server(
-				ServerHandlerService::new(Relay {
-					services,
-					rbac: rbac::RbacEngine::passthrough(),
-				}),
-				(tokio::io::stdin(), tokio::io::stdout()),
-			)
-			.await
-			.inspect_err(|e| {
-				tracing::error!("serving error: {:?}", e);
-			})?;
-			relay.waiting().await?;
-		},
-		Listener::Sse { host, port, mode } => {
-			let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
-			let app = SseApp::new();
-			let router = app.router();
-
-			let enable_proxy = Some(ListenerMode::Proxy) == mode;
-
-			let listener = proxyprotocol::Listener::new(listener, enable_proxy);
-			let svc = router.into_make_service_with_connect_info::<proxyprotocol::Address>();
-			run_set.spawn(async move {
-				axum::serve(listener, svc).await;
-			});
-		},
-	};
+	run_set.spawn(async move {
+		run_local_client(local).await;
+	});
 
 	// Add metrics listener
 	let listener = tokio::net::TcpListener::bind("0.0.0.0:19000").await?;

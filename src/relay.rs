@@ -6,9 +6,7 @@ use rmcp::{
 	model::Tool, model::*, service::RequestContext,
 };
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 #[derive(Clone)]
 pub struct Relay {
 	state: Arc<State>,

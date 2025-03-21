@@ -1,30 +1,44 @@
 {
+  "type": "local",
   "listener": {
     "sse": {
       "host": "0.0.0.0",
       "port": 8001
     }
   },
-  "rules": [
+  "policies": [
     {
       "key": "sub",
       "value": "1234567890",
-      "resource": {"type": "tool", "id": "*"},
-      "matcher": {"type": "equals"}
+      "resource": {
+        "type": "tool",
+        "id": "*"
+      },
+      "matcher": {
+        "type": "equals"
+      }
     }
   ],
-  "targets": {
-    "git": {
-      "stdio": {
+  "targets": [
+    {
+      "name": "git",
+      "spec": {
+        "type": "stdio",
         "cmd": "uvx",
-        "args": ["mcp-server-git"]
+        "args": [
+          "mcp-server-git"
+        ]
       }
     },
-    "everything": {
-      "stdio": {
+    {
+      "name": "everything",
+      "spec": {
+        "type": "stdio",
         "cmd": "npx",
-        "args": ["@modelcontextprotocol/server-everything"]
+        "args": [
+          "@modelcontextprotocol/server-everything"
+        ]
       }
     }
-  }
+  ]
 }
