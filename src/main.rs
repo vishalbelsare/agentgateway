@@ -20,7 +20,8 @@ mod proto {
 }
 
 use mcp_gateway::relay::Relay;
-use mcp_gateway::sse::App;
+use mcp_gateway::sse::App as SseApp;
+use mcp_gateway::metrics::App as MetricsApp;
 use mcp_gateway::*;
 
 #[derive(Parser, Debug)]
@@ -129,6 +130,8 @@ async fn main() -> Result<()> {
 		services.insert(name.to_string(), Arc::new(Mutex::new(client)));
 	}
 
+  let mut run_set = JoinSet::new();
+
 	// Create an instance of our counter router
 	match cfg.listener.unwrap_or_default() {
 		Listener::Stdio {} => {
@@ -147,16 +150,30 @@ async fn main() -> Result<()> {
 		},
 		Listener::Sse { host, port, mode } => {
 			let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
-			let app = App::new(services, cfg.rules);
+			let app = SseApp::new(services, cfg.rules);
 			let router = app.router();
 
 			let enable_proxy = Some(ListenerMode::Proxy) == mode;
 
 			let listener = proxyprotocol::Listener::new(listener, enable_proxy);
 			let svc = router.into_make_service_with_connect_info::<proxyprotocol::Address>();
-			axum::serve(listener, svc).await?;
+      run_set.spawn(async move {
+        axum::serve(listener, svc).await?;
+      });
 		},
 	};
 
+  // Add metrics listener
+  let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
+  let app = MetricsApp::new(services, cfg.rules);
+  let router = app.router();
+  run_set.spawn(async move {
+    axum::serve(listener, router).await?;
+  });
+
+  // Wait for all servers to finish? I think this does what I want :shrug:
+  while let Some(result) = run_set.join_next().await {
+    result?;
+  }
 	Ok(())
 }
