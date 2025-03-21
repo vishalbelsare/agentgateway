@@ -7,5 +7,5 @@ pub mod relay;
 pub mod sse;
 pub mod state;
 pub mod strng;
-pub mod xds;
 pub mod version;
+pub mod xds;

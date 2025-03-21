@@ -616,7 +616,8 @@ impl AdsClient {
 
 		let mut req = tonic::Request::new(outbound);
 
-		let ads_connection = AggregatedDiscoveryServiceClient::connect(self.config.address.clone()).await?
+		let ads_connection = AggregatedDiscoveryServiceClient::connect(self.config.address.clone())
+			.await?
 			.max_decoding_message_size(200 * 1024 * 1024)
 			.delta_aggregated_resources(req)
 			.await;

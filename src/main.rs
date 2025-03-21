@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use mcp_gateway::state::{Listener, ListenerMode, Target};
+use prometheus_client::registry::Registry;
 use rmcp::{
 	ClientHandlerService, ServerHandlerService, serve_client, serve_server, service::RunningService,
 	transport::child_process::TokioChildProcess, transport::sse::SseTransport,
@@ -12,16 +13,15 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing_subscriber::{self, EnvFilter};
-
 #[allow(warnings)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 mod proto {
 	tonic::include_proto!("envoy.service.discovery.v3");
 }
 
+use mcp_gateway::metrics::App as MetricsApp;
 use mcp_gateway::relay::Relay;
 use mcp_gateway::sse::App as SseApp;
-use mcp_gateway::metrics::App as MetricsApp;
 use mcp_gateway::*;
 
 #[derive(Parser, Debug)]
@@ -58,6 +58,8 @@ async fn main() -> Result<()> {
 		.with_writer(std::io::stderr)
 		.with_ansi(false)
 		.init();
+
+	let registry = Registry::new();
 
 	let args = Args::parse();
 	let cfg = match args.config {
@@ -130,7 +132,7 @@ async fn main() -> Result<()> {
 		services.insert(name.to_string(), Arc::new(Mutex::new(client)));
 	}
 
-  let mut run_set = JoinSet::new();
+	let mut run_set = JoinSet::new();
 
 	// Create an instance of our counter router
 	match cfg.listener.unwrap_or_default() {
@@ -157,23 +159,23 @@ async fn main() -> Result<()> {
 
 			let listener = proxyprotocol::Listener::new(listener, enable_proxy);
 			let svc = router.into_make_service_with_connect_info::<proxyprotocol::Address>();
-      run_set.spawn(async move {
-        axum::serve(listener, svc).await?;
-      });
+			run_set.spawn(async move {
+				axum::serve(listener, svc).await?;
+			});
 		},
 	};
 
-  // Add metrics listener
-  let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
-  let app = MetricsApp::new(services, cfg.rules);
-  let router = app.router();
-  run_set.spawn(async move {
-    axum::serve(listener, router).await?;
-  });
+	// Add metrics listener
+	let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
+	let app = MetricsApp::new(registry);
+	let router = app.router();
+	run_set.spawn(async move {
+		axum::serve(listener, router).await?;
+	});
 
-  // Wait for all servers to finish? I think this does what I want :shrug:
-  while let Some(result) = run_set.join_next().await {
-    result?;
-  }
+	// Wait for all servers to finish? I think this does what I want :shrug:
+	while let Some(result) = run_set.join_next().await {
+		result?;
+	}
 	Ok(())
 }

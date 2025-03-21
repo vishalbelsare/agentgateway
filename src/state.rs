@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Target {
-  name: String,
-  spec: TargetSpec,
+	name: String,
+	spec: TargetSpec,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -19,12 +19,15 @@ pub enum TargetSpec {
 
 impl From<&XdsTarget> for Target {
 	fn from(value: &XdsTarget) -> Self {
-    Target {
-      name: value.name.clone(),
-      spec: {
-        TargetSpec::Sse { host: value.host.clone(), port: value.port }
-      },
-    }
+		Target {
+			name: value.name.clone(),
+			spec: {
+				TargetSpec::Sse {
+					host: value.host.clone(),
+					port: value.port,
+				}
+			},
+		}
 	}
 }
 

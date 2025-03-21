@@ -17,8 +17,8 @@ use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::registry::{Registry, Unit};
 
-use crate::metrics::Recorder;
 use super::envoy::service::discovery::v3::DeltaDiscoveryResponse;
+use crate::metrics::Recorder;
 
 pub struct Metrics {
 	pub connection_terminations: Family<ConnectionTermination, Counter>,
@@ -79,30 +79,32 @@ impl Metrics {
 }
 
 impl Recorder<ConnectionTerminationReason, u64> for Metrics {
-    fn record(&self, reason: &ConnectionTerminationReason, count: u64) {
-        self.connection_terminations
-            .get_or_create(&ConnectionTermination { reason: *reason })
-            .inc_by(count);
-    }
+	fn record(&self, reason: &ConnectionTerminationReason, count: u64) {
+		self
+			.connection_terminations
+			.get_or_create(&ConnectionTermination { reason: *reason })
+			.inc_by(count);
+	}
 }
 
 impl Recorder<DeltaDiscoveryResponse, ()> for Metrics {
-    fn record(&self, response: &DeltaDiscoveryResponse, _: ()) {
-        let type_url = TypeUrl {
-            url: response.type_url.clone(),
-        };
-        self.message_types.get_or_create(&type_url).inc();
+	fn record(&self, response: &DeltaDiscoveryResponse, _: ()) {
+		let type_url = TypeUrl {
+			url: response.type_url.clone(),
+		};
+		self.message_types.get_or_create(&type_url).inc();
 
-        let mut total_message_size: u64 = 0;
-        for resource in &response.resources {
-            total_message_size += resource
-                .resource
-                .as_ref()
-                .map(|v| v.value.len())
-                .unwrap_or_default() as u64;
-        }
-        self.total_messages_size
-            .get_or_create(&type_url)
-            .inc_by(total_message_size);
-    }
+		let mut total_message_size: u64 = 0;
+		for resource in &response.resources {
+			total_message_size += resource
+				.resource
+				.as_ref()
+				.map(|v| v.value.len())
+				.unwrap_or_default() as u64;
+		}
+		self
+			.total_messages_size
+			.get_or_create(&type_url)
+			.inc_by(total_message_size);
+	}
 }
