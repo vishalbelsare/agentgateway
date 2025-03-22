@@ -1,27 +1,14 @@
 use anyhow::Result;
 use clap::Parser;
-use config::Config as XdsConfig;
-use mcp_gateway::state::{Listener, ListenerMode, Target, TargetSpec};
+use mcp_gateway::config::Config as XdsConfig;
+use mcp_gateway::r#static::{LocalConfig, run_local_client};
 use prometheus_client::registry::Registry;
-use rmcp::{
-	ClientHandlerService, ServerHandlerService, serve_client, serve_server, service::RunningService,
-	transport::child_process::TokioChildProcess, transport::sse::SseTransport,
-};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::RwLock;
-use tokio::process::Command;
-use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing_subscriber::{self, EnvFilter};
-use xds::{LocalConfig, run_local_client};
 
 use mcp_gateway::metrics::App as MetricsApp;
-use mcp_gateway::relay::Relay;
-use mcp_gateway::sse::App as SseApp;
-use mcp_gateway::state::State as ProxyState;
-use mcp_gateway::*;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

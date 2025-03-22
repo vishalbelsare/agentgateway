@@ -208,15 +208,13 @@ impl PolicyStore {
 }
 
 pub struct State {
-	listener: Listener,
 	pub targets: TargetStore,
 	pub policies: PolicyStore,
 }
 
 impl State {
-	pub fn new(listener: Listener) -> Self {
+	pub fn new() -> Self {
 		Self {
-			listener,
 			targets: TargetStore::new(),
 			policies: PolicyStore::new(),
 		}
