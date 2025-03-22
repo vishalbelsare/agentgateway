@@ -1,5 +1,5 @@
 {
-  "type": "local",
+  "type": "static",
   "listener": {
     "sse": {
       "host": "0.0.0.0",

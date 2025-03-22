@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use mcp_gateway::config::Config as XdsConfig;
-use mcp_gateway::r#static::{LocalConfig, run_local_client};
+use mcp_gateway::r#static::{StaticConfig, run_local_client};
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -25,8 +25,8 @@ struct Args {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Config {
-	#[serde(rename = "local")]
-	Local(LocalConfig),
+	#[serde(rename = "static")]
+	Static(StaticConfig),
 	#[serde(rename = "xds")]
 	Xds(XdsConfig),
 }
@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
 	};
 
 	let local = match cfg {
-		Config::Local(cfg) => cfg,
+		Config::Static(cfg) => cfg,
 		Config::Xds(_) => {
 			eprintln!("XDS config not supported yet");
 			std::process::exit(1);

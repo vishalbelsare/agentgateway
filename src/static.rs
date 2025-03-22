@@ -12,7 +12,7 @@ use axum::http::HeaderMap;
 
 #[derive(Default, Debug, Eq, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LocalConfig {
+pub struct StaticConfig {
 	#[serde(default)]
 	pub targets: Vec<Target>,
 	#[serde(default)]
@@ -21,7 +21,7 @@ pub struct LocalConfig {
 	pub listener: Listener,
 }
 
-pub async fn run_local_client(cfg: LocalConfig) -> Result<(), anyhow::Error> {
+pub async fn run_local_client(cfg: StaticConfig) -> Result<(), anyhow::Error> {
 	debug!(
 		"load local config: {}",
 		serde_yaml::to_string(&cfg).unwrap_or_default()
