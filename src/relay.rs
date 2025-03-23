@@ -74,8 +74,23 @@ impl ServerHandler for Relay {
 		request: PaginatedRequestParam,
 		context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListPromptsResult, McpError> {
+		let all = self.state.targets.iter().await.map(|(_name, svc)| async {
+			let result = svc
+				.as_ref()
+				.read()
+				.await
+				.list_prompts(request.clone())
+				.await
+				.unwrap();
+			result.prompts
+		});
+
 		Ok(ListPromptsResult {
-			prompts: vec![],
+			prompts: futures::future::join_all(all)
+				.await
+				.into_iter()
+				.flatten()
+				.collect(),
 			next_cursor: None,
 		})
 	}
@@ -85,10 +100,24 @@ impl ServerHandler for Relay {
 		request: GetPromptRequestParam,
 		context: RequestContext<RoleServer>,
 	) -> std::result::Result<GetPromptResult, McpError> {
-		Ok(GetPromptResult {
-			description: None,
-			messages: vec![],
-		})
+		if !self.state.policies.validate(
+			&rbac::ResourceType::Prompt {
+				id: request.name.to_string(),
+			},
+			&self.id,
+		) {
+			return Err(McpError::invalid_request("not allowed", None));
+		}
+		let tool_name = request.name.to_string();
+		let (service_name, tool) = tool_name.split_once(':').unwrap();
+		let service = self.state.targets.get(service_name).await.unwrap();
+		let req = GetPromptRequestParam {
+			name: tool.to_string(),
+			arguments: request.arguments,
+		};
+
+		let result = service.as_ref().read().await.get_prompt(req).await.unwrap();
+		Ok(result)
 	}
 
 	async fn list_tools(
@@ -97,7 +126,10 @@ impl ServerHandler for Relay {
 		context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListToolsResult, McpError> {
 		let mut tools = Vec::new();
-		for (name, service) in self.state.targets.iter_connections() {
+		// TODO: Use iterators
+		// TODO: Handle individual errors
+		// TODO: Do we want to handle pagination here, or just pass it through?
+		for (name, service) in self.state.targets.iter().await {
 			let result = service
 				.as_ref()
 				.read()
@@ -125,14 +157,17 @@ impl ServerHandler for Relay {
 		request: CallToolRequestParam,
 		context: RequestContext<RoleServer>,
 	) -> std::result::Result<CallToolResult, McpError> {
-		// if !self.rbac.check(rbac::ResourceType::Tool {
-		// 	id: request.name.to_string(),
-		// }) {
-		// 	return Err(McpError::invalid_request("not allowed", None));
-		// }
+		if !self.state.policies.validate(
+			&rbac::ResourceType::Tool {
+				id: request.name.to_string(),
+			},
+			&self.id,
+		) {
+			return Err(McpError::invalid_request("not allowed", None));
+		}
 		let tool_name = request.name.to_string();
 		let (service_name, tool) = tool_name.split_once(':').unwrap();
-		let service = self.state.targets.get_connection(service_name).unwrap();
+		let service = self.state.targets.get(service_name).await.unwrap();
 		let req = CallToolRequestParam {
 			name: Cow::Owned(tool.to_string()),
 			arguments: request.arguments,

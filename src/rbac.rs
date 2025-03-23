@@ -53,6 +53,19 @@ impl RuleSet {
 			rules,
 		}
 	}
+
+	// Check if the claims have access to the resource
+	pub fn validate(&self, resource: &ResourceType, claims: &Claims) -> bool {
+		tracing::info!("Checking RBAC for resource: {:?}", resource);
+		// If there are no rules, everyone has access
+		if self.rules.is_empty() {
+			return true;
+		}
+
+		self.rules.iter().any(|rule| {
+			rule.resource.matches(&resource) && claims.matches(&rule.key, &rule.value, &rule.matcher)
+		})
+	}
 }
 
 impl From<&XdsRuleSet> for RuleSet {

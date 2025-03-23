@@ -9,9 +9,8 @@ use axum::{
 	routing::get,
 };
 use futures::{SinkExt, StreamExt, stream::Stream};
-use rmcp::{
-	ClientHandlerService, ServerHandlerService, model::*, serve_server, service::RunningService,
-};
+use rmcp::model::ClientJsonRpcMessage;
+use rmcp::{ServerHandlerService, serve_server};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{self};

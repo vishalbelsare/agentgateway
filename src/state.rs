@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::process::Command;
 use tokio::sync::RwLock;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct Target {
@@ -76,90 +78,124 @@ impl Default for Listener {
 	}
 }
 
+pub struct ConnectionPool {
+	demand_rx: mpsc::Receiver<(oneshot::Sender<()>, Target)>,
+	by_name: HashMap<String, Arc<RwLock<RunningService<ClientHandlerService>>>>,
+}
+
+impl ConnectionPool {
+	pub fn new(demand_rx: mpsc::Receiver<(oneshot::Sender<()>, Target)>) -> Self {
+		Self {
+			demand_rx,
+			by_name: HashMap::new(),
+		}
+	}
+
+	// This watches for new targets and starts connections to them
+	pub async fn run(&mut self) -> Result<(), anyhow::Error> {
+		loop {
+			match self.demand_rx.recv().await {
+				Some((tx, target)) => {
+					let transport: RunningService<ClientHandlerService> = match target.spec {
+						TargetSpec::Sse { host, port } => {
+							let transport: SseTransport = SseTransport::start(
+								format!("http://{}:{}", host, port).as_str(),
+								Default::default(),
+							)
+							.await?;
+							serve_client(ClientHandlerService::simple(), transport).await?
+						},
+						TargetSpec::Stdio { cmd, args } => {
+							serve_client(
+								ClientHandlerService::simple(),
+								TokioChildProcess::new(Command::new(cmd).args(args)).unwrap(),
+							)
+							.await?
+						},
+					};
+					let connection = Arc::new(RwLock::new(transport));
+					self.by_name.insert(target.name.clone(), connection.clone());
+					tx.send(()).unwrap();
+				},
+				None => {
+					tracing::error!("Connection pool receiver closed");
+					return Err(anyhow::anyhow!("Connection pool receiver closed"));
+				},
+			}
+		}
+	}
+
+	pub fn get(&self, name: &str) -> Option<&Arc<RwLock<RunningService<ClientHandlerService>>>> {
+		self.by_name.get(name)
+	}
+}
+
 pub struct TargetStore {
 	by_name: HashMap<String, Target>,
-
-	connections: HashMap<String, Arc<RwLock<RunningService<ClientHandlerService>>>>,
+	demand: mpsc::Sender<(oneshot::Sender<()>, Target)>,
+	connections: ConnectionPool,
 }
 
 impl TargetStore {
 	pub fn new() -> Self {
+		let (demand, demand_rx) = mpsc::channel(100);
+		let connections = ConnectionPool::new(demand_rx);
 		Self {
 			by_name: HashMap::new(),
-			connections: HashMap::new(),
+			demand,
+			connections,
 		}
 	}
 
-	// TODO: get rid of unwraps
-	// TODO: Separate connection/LB from insertion
-	pub async fn insert(&mut self, target: Target) {
-		let name = target.name.clone();
-		self.by_name.insert(target.name.clone(), target);
-		match self.connections.get(&name) {
-			Some(_) => {},
-			None => match self.by_name.get(&name) {
-				Some(target) => match target.spec.clone() {
-					TargetSpec::Sse { host, port } => {
-						let transport = SseTransport::start(
-							format!("http://{}:{}", host, port).as_str(),
-							Default::default(),
-						)
-						.await
-						.unwrap();
-						let client = serve_client(ClientHandlerService::simple(), transport)
-							.await
-							.unwrap();
-						let connection: Arc<RwLock<RunningService<ClientHandlerService>>> =
-							Arc::new(RwLock::new(client));
-						self
-							.connections
-							.insert(name.to_string(), connection.clone());
-					},
-					TargetSpec::Stdio { cmd, args } => {
-						tracing::info!("Starting stdio server: {name}");
-						let client: RunningService<ClientHandlerService> = serve_client(
-							ClientHandlerService::simple(),
-							TokioChildProcess::new(Command::new(cmd).args(args)).unwrap(),
-						)
-						.await
-						.unwrap();
-						tracing::info!("Connected to stdio server: {name}");
-						let connection = Arc::new(RwLock::new(client));
-						self
-							.connections
-							.insert(name.to_string(), connection.clone());
-					},
-				},
-				None => {
-					panic!("Target not found");
-				},
-			},
-		};
-	}
-
 	pub fn remove(&mut self, name: &str) {
+		// TODO: Drain connections from target
 		self.by_name.remove(name);
-		self.connections.remove(name);
 	}
 
-	pub fn get(&self, name: &str) -> Option<&Target> {
-		self.by_name.get(name)
+	pub fn insert(&mut self, target: Target) {
+		self.by_name.insert(target.name.clone(), target);
 	}
 
-	pub fn get_connection(
+	pub async fn get(
 		&self,
 		name: &str,
 	) -> Option<&Arc<RwLock<RunningService<ClientHandlerService>>>> {
-		self.connections.get(name)
+		match self.connections.get(name) {
+			Some(connection) => Some(connection),
+			None => {
+				// TODO: Handle error
+				let (tx, rx) = oneshot::channel();
+				// Send demand for connection
+				self
+					.demand
+					.send((tx, self.by_name[name].clone()))
+					.await
+					.unwrap();
+				// Wait for connection
+				match rx.await {
+					Ok(_) => self.connections.get(name),
+					Err(_) => {
+						tracing::error!("Connection not found for target: {}", name);
+						None
+					},
+				}
+			},
+		}
 	}
 
-	pub fn iter_connections(
+	pub async fn iter(
 		&self,
 	) -> impl Iterator<Item = (String, &Arc<RwLock<RunningService<ClientHandlerService>>>)> {
-		self
-			.connections
+		let x = self
+			.by_name
 			.iter()
-			.map(|(name, connection)| (name.clone(), connection))
+			.map(|(name, _)| async move { (name.clone(), self.get(name).await) });
+
+		futures::future::join_all(x)
+			.await
+			.into_iter()
+			.filter(|(_, connection)| connection.is_some())
+			.map(|(name, connection)| (name, connection.unwrap()))
 	}
 
 	pub fn clear(&mut self) {
@@ -188,18 +224,12 @@ impl PolicyStore {
 		self.by_name.remove(name);
 	}
 
-	pub fn get(&self, name: &str) -> Option<Vec<rbac::Rule>> {
-		self
-			.by_name
-			.get(name)
-			.map(|rule_set| rule_set.rules.clone())
-	}
-
-	pub fn iter(&self) -> impl Iterator<Item = &rbac::Rule> {
+	pub fn validate(&self, resource: &rbac::ResourceType, claims: &rbac::Claims) -> bool {
 		self
 			.by_name
 			.values()
-			.flat_map(|rule_set| rule_set.rules.iter())
+			.into_iter()
+			.any(|policy| policy.validate(resource, claims))
 	}
 
 	pub fn clear(&mut self) {

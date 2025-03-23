@@ -18,11 +18,8 @@ use std::fmt::Formatter;
 use std::sync::{Arc, RwLock};
 use tracing::Level;
 
-use serde_yaml;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, instrument, trace, warn};
-
-use rmcp::{ServerHandlerService, serve_server};
 
 pub use client::*;
 pub use metrics::*;
@@ -32,14 +29,10 @@ use xds::mcp::kgateway_dev::rbac::Config as XdsRbac;
 use xds::mcp::kgateway_dev::target::Target as XdsTarget;
 
 use self::envoy::service::discovery::v3::DeltaDiscoveryRequest;
-use crate::proxyprotocol;
 use crate::rbac;
-use crate::relay::Relay;
-use crate::sse::App as SseApp;
-use crate::state::{Listener, ListenerMode, State as ProxyState, Target};
+use crate::state::{State as ProxyState, Target};
 use crate::strng::Strng;
 use crate::xds;
-use axum::http::HeaderMap;
 
 mod client;
 pub mod metrics;

@@ -34,7 +34,7 @@ pub async fn run_local_client(cfg: StaticConfig) -> Result<(), anyhow::Error> {
 	let num_policies = cfg.policies.len();
 	for target in cfg.targets {
 		trace!("inserting target {}", &target.name);
-		state.targets.insert(target).await;
+		state.targets.insert(target);
 	}
 	let rule_set = rbac::RuleSet::new("test".to_string(), "test".to_string(), cfg.policies);
 	state.policies.insert(rule_set);
