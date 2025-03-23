@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tracing::{debug, info, trace};
 
 use rmcp::{ServerHandlerService, serve_server};
@@ -47,10 +47,7 @@ async fn serve(listener: Listener, state: ProxyState) -> Result<(), anyhow::Erro
 		Listener::Stdio {} => {
 			let relay = serve_server(
 				// TODO: This is a hack
-				ServerHandlerService::new(Relay::new(
-					Arc::new(state),
-					rbac::Claims::from_headers(&HeaderMap::new()),
-				)),
+				ServerHandlerService::new(Relay::new(Arc::new(state), rbac::Identity::empty())),
 				(tokio::io::stdin(), tokio::io::stdout()),
 			)
 			.await

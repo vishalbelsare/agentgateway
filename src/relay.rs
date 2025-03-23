@@ -1,24 +1,24 @@
 use crate::rbac;
 use crate::state::State;
-use rmcp::service::RunningService;
 use rmcp::{
-	ClientHandlerService, Error as McpError, RoleServer, ServerHandler, model::CallToolRequestParam,
-	model::Tool, model::*, service::RequestContext,
+	Error as McpError, RoleServer, ServerHandler, model::CallToolRequestParam, model::Tool, model::*,
+	service::RequestContext,
 };
 use std::borrow::Cow;
 use std::sync::Arc;
 #[derive(Clone)]
 pub struct Relay {
 	state: Arc<State>,
-	id: rbac::Claims,
+	id: rbac::Identity,
 }
 
 impl Relay {
-	pub fn new(state: Arc<State>, id: rbac::Claims) -> Self {
+	pub fn new(state: Arc<State>, id: rbac::Identity) -> Self {
 		Self { state, id }
 	}
 }
 
+// TODO: lists and gets can be macros
 impl ServerHandler for Relay {
 	fn get_info(&self) -> ServerInfo {
 		ServerInfo {
@@ -42,7 +42,7 @@ impl ServerHandler for Relay {
 	async fn list_resources(
 		&self,
 		request: PaginatedRequestParam,
-		context: RequestContext<RoleServer>,
+		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListResourcesResult, McpError> {
 		let all = self.state.targets.iter().await.map(|(_name, svc)| async {
 			let result = svc
@@ -68,7 +68,7 @@ impl ServerHandler for Relay {
 	async fn read_resource(
 		&self,
 		request: ReadResourceRequestParam,
-		context: RequestContext<RoleServer>,
+		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ReadResourceResult, McpError> {
 		let all = self.state.targets.iter().await.map(|(_name, svc)| async {
 			let result = svc
@@ -93,7 +93,7 @@ impl ServerHandler for Relay {
 	async fn list_resource_templates(
 		&self,
 		request: PaginatedRequestParam,
-		context: RequestContext<RoleServer>,
+		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListResourceTemplatesResult, McpError> {
 		let all = self.state.targets.iter().await.map(|(_name, svc)| async {
 			let result = svc
@@ -119,7 +119,7 @@ impl ServerHandler for Relay {
 	async fn list_prompts(
 		&self,
 		request: PaginatedRequestParam,
-		context: RequestContext<RoleServer>,
+		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListPromptsResult, McpError> {
 		let all = self.state.targets.iter().await.map(|(_name, svc)| async {
 			let result = svc
@@ -145,7 +145,7 @@ impl ServerHandler for Relay {
 	async fn get_prompt(
 		&self,
 		request: GetPromptRequestParam,
-		context: RequestContext<RoleServer>,
+		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<GetPromptResult, McpError> {
 		if !self.state.policies.validate(
 			&rbac::ResourceType::Prompt {
@@ -170,7 +170,7 @@ impl ServerHandler for Relay {
 	async fn list_tools(
 		&self,
 		request: PaginatedRequestParam,
-		context: RequestContext<RoleServer>,
+		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListToolsResult, McpError> {
 		let mut tools = Vec::new();
 		// TODO: Use iterators
@@ -202,7 +202,7 @@ impl ServerHandler for Relay {
 	async fn call_tool(
 		&self,
 		request: CallToolRequestParam,
-		context: RequestContext<RoleServer>,
+		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<CallToolResult, McpError> {
 		if !self.state.policies.validate(
 			&rbac::ResourceType::Tool {

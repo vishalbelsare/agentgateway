@@ -14,17 +14,9 @@
 
 use std::{mem, sync::Arc};
 
-use axum::{
-	Json, Router,
-	extract::{Query, State},
-	handler::Handler,
-	http::{HeaderMap, StatusCode},
-	response::sse::{Event, Sse},
-	routing::get,
-};
+use axum::{Router, extract::State, http::StatusCode, routing::get};
 
 use prometheus_client::encoding::text::encode;
-use prometheus_client::encoding::{EncodeLabelValue, LabelValueEncoder};
 use prometheus_client::registry::Registry;
 use tracing::error;
 

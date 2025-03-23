@@ -224,7 +224,7 @@ impl PolicyStore {
 		self.by_name.remove(name);
 	}
 
-	pub fn validate(&self, resource: &rbac::ResourceType, claims: &rbac::Claims) -> bool {
+	pub fn validate(&self, resource: &rbac::ResourceType, claims: &rbac::Identity) -> bool {
 		self
 			.by_name
 			.values()

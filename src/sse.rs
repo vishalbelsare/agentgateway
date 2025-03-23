@@ -2,15 +2,25 @@ use crate::state::State as AppState;
 use anyhow::Result;
 use axum::extract::ConnectInfo;
 use axum::{
-	Json, Router,
+	Json, RequestPartsExt, Router,
+	extract::FromRequestParts,
 	extract::{Query, State},
-	http::{HeaderMap, StatusCode},
+	http::{HeaderMap, StatusCode, request::Parts},
 	response::sse::{Event, Sse},
+	response::{IntoResponse, Response},
 	routing::get,
 };
+use axum_extra::{
+	TypedHeader,
+	headers::{Authorization, authorization::Bearer},
+};
 use futures::{SinkExt, StreamExt, stream::Stream};
+use jsonwebtoken::{DecodingKey, Validation, decode};
 use rmcp::model::ClientJsonRpcMessage;
 use rmcp::{ServerHandlerService, serve_server};
+use serde_json::Value;
+use serde_json::json;
+use serde_json::map::Map;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{self};
@@ -45,6 +55,41 @@ impl App {
 	}
 }
 
+impl FromRequestParts<App> for rbac::Claims {
+	type Rejection = AuthError;
+
+	async fn from_request_parts(parts: &mut Parts, _state: &App) -> Result<Self, Self::Rejection> {
+		// Extract the token from the authorization header
+		let TypedHeader(Authorization(bearer)) = parts
+			.extract::<TypedHeader<Authorization<Bearer>>>()
+			.await
+			.map_err(|_| AuthError::InvalidToken)?;
+		// Decode the user data
+		let key = DecodingKey::from_secret(b"secret");
+		let token_data = decode::<Map<String, Value>>(bearer.token(), &key, &Validation::default())
+			.map_err(|_| AuthError::InvalidToken)?;
+
+		Ok(rbac::Claims::new(token_data.claims))
+	}
+}
+
+impl IntoResponse for AuthError {
+	fn into_response(self) -> Response {
+		let (status, error_message) = match self {
+			AuthError::InvalidToken => (StatusCode::BAD_REQUEST, "Invalid token"),
+		};
+		let body = Json(json!({
+				"error": error_message,
+		}));
+		(status, body).into_response()
+	}
+}
+
+#[derive(Debug)]
+pub enum AuthError {
+	InvalidToken,
+}
+
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostEventQuery {
@@ -73,13 +118,19 @@ async fn post_event_handler(
 async fn sse_handler(
 	State(app): State<App>,
 	ConnectInfo(connection): ConnectInfo<proxyprotocol::Address>,
-	headers: HeaderMap,
+	claims: rbac::Claims,
 ) -> Sse<impl Stream<Item = Result<Event, io::Error>>> {
 	// it's 4KB
 
-	let claims = rbac::Claims::from_headers_and_connection(&headers, &connection);
 	let session = session_id();
 	tracing::info!(%session, ?connection, "sse connection");
+	let claims = rbac::Identity::new(
+		Some(claims.claims()),
+		match connection.identity {
+			Some(identity) => Some(identity),
+			None => None,
+		},
+	);
 	use tokio_stream::wrappers::ReceiverStream;
 	use tokio_util::sync::PollSender;
 	let (from_client_tx, from_client_rx) = tokio::sync::mpsc::channel(64);

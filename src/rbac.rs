@@ -6,36 +6,6 @@ use http::header::{AUTHORIZATION, HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::map::Map;
-#[derive(Clone)]
-pub struct RbacEngine {
-	rules: Vec<Rule>,
-	claims: Claims,
-}
-
-impl RbacEngine {
-	pub fn new(rules: Vec<Rule>, claims: Claims) -> Self {
-		Self { rules, claims }
-	}
-
-	pub fn passthrough() -> Self {
-		Self {
-			rules: vec![],
-			claims: Claims { claims: Map::new() },
-		}
-	}
-	// Check if the claims have access to the resource
-	pub fn check(&self, resource: ResourceType) -> bool {
-		tracing::info!("Checking RBAC for resource: {:?}", resource);
-		// If there are no rules, everyone has access
-		if self.rules.is_empty() {
-			return true;
-		}
-
-		self.rules.iter().any(|rule| {
-			rule.resource.matches(&resource) && self.claims.matches(&rule.key, &rule.value, &rule.matcher)
-		})
-	}
-}
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -55,7 +25,7 @@ impl RuleSet {
 	}
 
 	// Check if the claims have access to the resource
-	pub fn validate(&self, resource: &ResourceType, claims: &Claims) -> bool {
+	pub fn validate(&self, resource: &ResourceType, claims: &Identity) -> bool {
 		tracing::info!("Checking RBAC for resource: {:?}", resource);
 		// If there are no rules, everyone has access
 		if self.rules.is_empty() {
@@ -159,25 +129,36 @@ impl From<&rule::Matcher> for Matcher {
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct Claims {
-	claims: Map<String, Value>,
+pub struct Identity {
+	claims: Option<Map<String, Value>>,
+	connection_id: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Claims(Map<String, Value>);
+
 impl Claims {
-	pub fn from_headers(headers: &HeaderMap) -> Self {
-		match get_claims(headers) {
-			Some(claims) => Self {
-				claims: claims.claims,
-			},
-			None => Self { claims: Map::new() },
+	pub fn new(claims: Map<String, Value>) -> Self {
+		Self(claims)
+	}
+	pub fn claims(self) -> Map<String, Value> {
+		self.0
+	}
+}
+
+impl Identity {
+	pub fn empty() -> Self {
+		Self {
+			claims: None,
+			connection_id: None,
 		}
 	}
-	pub fn from_headers_and_connection(headers: &HeaderMap, connection_info: &Address) -> Self {
-		let Claims { mut claims } = Self::from_headers(headers);
-		if let Some(id) = connection_info.identity.as_ref() {
-			claims.insert("connection:identity".to_string(), Value::String(id.clone()));
-		};
-		Claims { claims }
+
+	pub fn new(claims: Option<Map<String, Value>>, connection_id: Option<String>) -> Self {
+		Self {
+			claims,
+			connection_id,
+		}
 	}
 
 	pub fn matches(&self, key: &str, value: &str, matcher: &Matcher) -> bool {
@@ -186,123 +167,11 @@ impl Claims {
 		}
 	}
 	fn get_claim(&self, key: &str) -> Option<&str> {
-		self.claims.get(key).and_then(|v| v.as_str())
+		match &self.claims {
+			Some(claims) => claims.get(key).and_then(|v| v.as_str()),
+			None => None,
+		}
 	}
-}
-// TODO: Swap to error
-fn get_claims(headers: &HeaderMap) -> Option<Claims> {
-	let auth_header = headers.get(AUTHORIZATION);
-	match auth_header {
-		Some(auth_header) => {
-			// TODO: Handle errors
-			// Should never happen because this means it's non-ascii
-			let auth_header_value = auth_header.to_str().unwrap();
-			let parts: Vec<&str> = auth_header_value.splitn(2, " ").collect();
-			if parts.len() != 2 || parts[0] != "Bearer" {
-				return None;
-			}
-			let token = parts[1];
-
-			decode_jwt(token)
-		},
-		None => None,
-	}
-}
-
-fn decode_jwt(token: &str) -> Option<Claims> {
-	//
-	/*
-		Split the token into header, payload, and signature.
-		The parts are separated by a dot (.).
-
-		For example:
-
-		eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30
-
-		{"alg":"HS256","typ":"JWT"}{"sub":"1234567890","name":"John Doe","admin":true,"iat":1516239022}<secret_data>
-	*/
-	let parts: Vec<&str> = token.splitn(3, ".").collect();
-	if parts.len() < 2 {
-		return None;
-	}
-
-	let payload = parts[1];
-	match STANDARD_NO_PAD.decode(payload) {
-		Ok(decoded) => match serde_json::from_slice(&decoded) {
-			Ok(claims) => Some(Claims { claims }),
-			Err(e) => {
-				tracing::info!("Error parsing JWT payload: {}", e);
-				None
-			},
-		},
-		Err(e) => {
-			println!("Error decoding JWT: {}", e);
-			None
-		},
-	}
-}
-
-#[test]
-fn test_decode_jwt() {
-	let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30";
-	let claims = decode_jwt(token);
-	assert!(claims.is_some());
-	let claims = claims.unwrap();
-	assert_eq!(
-		claims.claims.get("sub"),
-		Some(&Value::String("1234567890".to_string()))
-	);
-	assert_eq!(
-		claims.claims.get("name"),
-		Some(&Value::String("John Doe".to_string()))
-	);
-	assert_eq!(claims.claims.get("admin"), Some(&Value::Bool(true)));
-	assert_eq!(
-		claims.claims.get("iat"),
-		Some(&Value::Number(serde_json::Number::from(1516239022)))
-	);
-}
-
-#[test]
-fn test_get_claims() {
-	let headers = HeaderMap::new();
-	let claims = get_claims(&headers);
-	assert!(claims.is_none());
-}
-
-#[test]
-fn test_resource_matches() {
-	let resource1 = ResourceType::Tool {
-		id: "increment".to_string(),
-	};
-	let resource2 = ResourceType::Tool {
-		id: "*".to_string(),
-	};
-	assert!(resource2.matches(&resource1));
-
-	let resource1 = ResourceType::Prompt {
-		id: "increment".to_string(),
-	};
-	let resource2 = ResourceType::Prompt {
-		id: "increment".to_string(),
-	};
-	assert!(resource2.matches(&resource1));
-
-	let resource1 = ResourceType::Resource {
-		id: "increment".to_string(),
-	};
-	let resource2 = ResourceType::Resource {
-		id: "increment_2".to_string(),
-	};
-	assert!(!resource2.matches(&resource1));
-
-	let resource1 = ResourceType::Resource {
-		id: "*".to_string(),
-	};
-	let resource2 = ResourceType::Resource {
-		id: "increment".to_string(),
-	};
-	assert!(!resource2.matches(&resource1));
 }
 
 #[test]
@@ -315,12 +184,16 @@ fn test_rbac_false_check() {
 			id: "increment".to_string(),
 		},
 	}];
-	let mut headers = HeaderMap::new();
-	headers.insert(AUTHORIZATION, http::header::HeaderValue::from_str("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30").unwrap());
-	let rbac = RbacEngine::new(rules, Claims::from_headers(&headers));
-	assert!(!rbac.check(ResourceType::Tool {
-		id: "increment".to_string()
-	}));
+	let rbac = RuleSet::new("test".to_string(), "test".to_string(), rules);
+	let mut headers = Map::new();
+	headers.insert("sub".to_string(), "1234567890".to_string().into());
+	let id = Identity::new(Some(headers), None);
+	assert!(!rbac.validate(
+		&ResourceType::Tool {
+			id: "increment".to_string()
+		},
+		&id
+	));
 }
 
 #[test]
@@ -333,10 +206,14 @@ fn test_rbac_check() {
 			id: "increment".to_string(),
 		},
 	}];
-	let mut headers = HeaderMap::new();
-	headers.insert(AUTHORIZATION, http::header::HeaderValue::from_str("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30").unwrap());
-	let rbac = RbacEngine::new(rules, Claims::from_headers(&headers));
-	assert!(rbac.check(ResourceType::Tool {
-		id: "increment".to_string()
-	}));
+	let rbac = RuleSet::new("test".to_string(), "test".to_string(), rules);
+	let mut headers = Map::new();
+	headers.insert("sub".to_string(), "1234567890".to_string().into());
+	let id = Identity::new(Some(headers), None);
+	assert!(rbac.validate(
+		&ResourceType::Tool {
+			id: "increment".to_string()
+		},
+		&id
+	));
 }
