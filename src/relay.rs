@@ -44,8 +44,23 @@ impl ServerHandler for Relay {
 		request: PaginatedRequestParam,
 		context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListResourcesResult, McpError> {
+		let all = self.state.targets.iter().await.map(|(_name, svc)| async {
+			let result = svc
+				.as_ref()
+				.read()
+				.await
+				.list_resources(request.clone())
+				.await
+				.unwrap();
+			result.resources
+		});
+
 		Ok(ListResourcesResult {
-			resources: vec![],
+			resources: futures::future::join_all(all)
+				.await
+				.into_iter()
+				.flatten()
+				.collect(),
 			next_cursor: None,
 		})
 	}
@@ -55,7 +70,24 @@ impl ServerHandler for Relay {
 		request: ReadResourceRequestParam,
 		context: RequestContext<RoleServer>,
 	) -> std::result::Result<ReadResourceResult, McpError> {
-		Ok(ReadResourceResult { contents: vec![] })
+		let all = self.state.targets.iter().await.map(|(_name, svc)| async {
+			let result = svc
+				.as_ref()
+				.read()
+				.await
+				.read_resource(request.clone())
+				.await
+				.unwrap();
+			result.contents
+		});
+
+		Ok(ReadResourceResult {
+			contents: futures::future::join_all(all)
+				.await
+				.into_iter()
+				.flatten()
+				.collect(),
+		})
 	}
 
 	async fn list_resource_templates(
@@ -63,8 +95,23 @@ impl ServerHandler for Relay {
 		request: PaginatedRequestParam,
 		context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListResourceTemplatesResult, McpError> {
+		let all = self.state.targets.iter().await.map(|(_name, svc)| async {
+			let result = svc
+				.as_ref()
+				.read()
+				.await
+				.list_resource_templates(request.clone())
+				.await
+				.unwrap();
+			result.resource_templates
+		});
+
 		Ok(ListResourceTemplatesResult {
-			resource_templates: vec![],
+			resource_templates: futures::future::join_all(all)
+				.await
+				.into_iter()
+				.flatten()
+				.collect(),
 			next_cursor: None,
 		})
 	}
