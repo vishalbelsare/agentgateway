@@ -41,12 +41,6 @@ fn main() -> Result<(), anyhow::Error> {
 				.collect::<Vec<_>>(),
 		)?;
 
-	// This tells cargo to re-run this build script only when the proto files
-	// we're interested in change or the any of the proto directories were updated.
-	for path in [proto_files, include_dirs].concat() {
-		println!("cargo:rerun-if-changed={}", path.to_str().unwrap());
-	}
-
 	// Adoppted from https://github.com/uutils/coreutils/blob/main/src/uu/stdbuf/build.rs
 	let out_dir = env::var("OUT_DIR").unwrap();
 	let profile_name = out_dir
@@ -75,6 +69,12 @@ fn main() -> Result<(), anyhow::Error> {
 		rustc_version::version().unwrap()
 	);
 	println!("cargo:rustc-env=MCPGW_BUILD_PROFILE_NAME={}", profile_name);
+
+  // This tells cargo to re-run this build script only when the proto files
+	// we're interested in change or the any of the proto directories were updated.
+	for path in [proto_files, include_dirs].concat() {
+		println!("cargo:rerun-if-changed={}", path.to_str().unwrap());
+	}
 
 	Ok(())
 }
