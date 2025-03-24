@@ -28,3 +28,4 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 3001
+      appProtocol: kgateway.dev/mcp

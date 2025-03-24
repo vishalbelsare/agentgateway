@@ -548,7 +548,7 @@ impl AdsClient {
 				// For other errors, we connect immediately
 				// TODO: we may need more nuance here; if we fail due to invalid initial request we may overload
 				// But we want to reconnect from MaxConnectionAge immediately.
-				warn!("XDS client error: {}, retrying", e);
+				warn!("XDS client error: {:?}, retrying", e);
 				self.metrics.increment(&ConnectionTerminationReason::Error);
 				// Reset backoff
 				INITIAL_BACKOFF
