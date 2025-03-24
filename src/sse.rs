@@ -1,5 +1,5 @@
 use crate::relay::Relay;
-use crate::state::State as AppState;
+use crate::xds::XdsStore as AppState;
 use crate::{proxyprotocol, rbac};
 use anyhow::Result;
 use axum::extract::ConnectInfo;
@@ -37,13 +37,13 @@ fn session_id() -> SessionId {
 
 #[derive(Clone)]
 pub struct App {
-	state: Arc<RwLock<AppState>>,
+	state: Arc<std::sync::RwLock<AppState>>,
 	txs:
 		Arc<tokio::sync::RwLock<HashMap<SessionId, tokio::sync::mpsc::Sender<ClientJsonRpcMessage>>>>,
 }
 
 impl App {
-	pub fn new(state: Arc<RwLock<AppState>>) -> Self {
+	pub fn new(state: Arc<std::sync::RwLock<AppState>>) -> Self {
 		Self {
 			state,
 			txs: Default::default(),
@@ -156,7 +156,7 @@ async fn sse_handler(
 	{
 		let session = session.clone();
 		tokio::spawn(async move {
-			let service = ServerHandlerService::new(Relay::new(app.state, claims));
+			let service = ServerHandlerService::new(Relay::new(app.state.clone(), claims));
 			let stream = ReceiverStream::new(from_client_rx);
 			let sink = PollSender::new(to_client_tx).sink_map_err(std::io::Error::other);
 			let result = serve_server(service, (sink, stream))

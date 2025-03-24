@@ -1,21 +1,35 @@
 use crate::rbac;
-use crate::state::State;
+use crate::xds::{Target, TargetSpec, XdsStore};
+use rmcp::ClientHandlerService;
+use rmcp::serve_client;
+use rmcp::service::RunningService;
+use rmcp::transport::child_process::TokioChildProcess;
+use rmcp::transport::sse::SseTransport;
 use rmcp::{
 	Error as McpError, RoleServer, ServerHandler, model::CallToolRequestParam, model::Tool, model::*,
 	service::RequestContext,
 };
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::process::Command;
 use tokio::sync::RwLock;
+
 #[derive(Clone)]
 pub struct Relay {
-	state: Arc<RwLock<State>>,
+	state: Arc<std::sync::RwLock<XdsStore>>,
+	pool: Arc<RwLock<ConnectionPool>>,
 	id: rbac::Identity,
 }
 
 impl Relay {
-	pub fn new(state: Arc<RwLock<State>>, id: rbac::Identity) -> Self {
-		Self { state, id }
+	pub fn new(state: Arc<std::sync::RwLock<XdsStore>>, id: rbac::Identity) -> Self {
+		Self {
+			state: state.clone(),
+			pool: Arc::new(RwLock::new(ConnectionPool::new(state.clone()))),
+			id,
+		}
 	}
 }
 
@@ -45,8 +59,8 @@ impl ServerHandler for Relay {
 		request: PaginatedRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListResourcesResult, McpError> {
-		let state = self.state.read().await;
-		let all = state.targets.iter().await.map(|(_name, svc)| {
+		let pool = self.pool.read().await;
+		let all = pool.iter().await.map(|(_name, svc)| {
 			let svc = svc.clone();
 			let request = request.clone();
 			async move {
@@ -76,28 +90,26 @@ impl ServerHandler for Relay {
 		request: ReadResourceRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ReadResourceResult, McpError> {
-		let state = self.state.read().await;
-		let all = state.targets.iter().await.map(|(_name, svc)| {
-			let svc = svc.clone();
-			let request = request.clone();
-			async move {
-				let result = svc
-					.as_ref()
-					.read()
-					.await
-					.read_resource(request)
-					.await
-					.unwrap();
-				result.contents
-			}
-		});
+		if !self.state.read().unwrap().policies.validate(
+			&rbac::ResourceType::Resource {
+				id: request.uri.to_string(),
+			},
+			&self.id,
+		) {
+			return Err(McpError::invalid_request("not allowed", None));
+		}
+		let pool = self.pool.read().await;
+		let target = pool.get(&request.uri).await.unwrap();
+		let result = target
+			.as_ref()
+			.read()
+			.await
+			.read_resource(request)
+			.await
+			.unwrap();
 
 		Ok(ReadResourceResult {
-			contents: futures::future::join_all(all)
-				.await
-				.into_iter()
-				.flatten()
-				.collect(),
+			contents: result.contents,
 		})
 	}
 
@@ -106,8 +118,8 @@ impl ServerHandler for Relay {
 		request: PaginatedRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListResourceTemplatesResult, McpError> {
-		let state = self.state.read().await;
-		let all = state.targets.iter().await.map(|(_name, svc)| {
+		let pool = self.pool.read().await;
+		let all = pool.iter().await.map(|(_name, svc)| {
 			let svc = svc.clone();
 			let request = request.clone();
 			async move {
@@ -137,8 +149,8 @@ impl ServerHandler for Relay {
 		request: PaginatedRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListPromptsResult, McpError> {
-		let state = self.state.read().await;
-		let all = state.targets.iter().await.map(|(_name, svc)| {
+		let pool = self.pool.read().await;
+		let all = pool.iter().await.map(|(_name, svc)| {
 			let svc = svc.clone();
 			let request = request.clone();
 			async move {
@@ -168,7 +180,7 @@ impl ServerHandler for Relay {
 		request: GetPromptRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<GetPromptResult, McpError> {
-		if !self.state.read().await.policies.validate(
+		if !self.state.read().unwrap().policies.validate(
 			&rbac::ResourceType::Prompt {
 				id: request.name.to_string(),
 			},
@@ -178,8 +190,8 @@ impl ServerHandler for Relay {
 		}
 		let tool_name = request.name.to_string();
 		let (service_name, tool) = tool_name.split_once(':').unwrap();
-		let state = self.state.read().await;
-		let service = state.targets.get(service_name).await.unwrap();
+		let pool = self.pool.read().await;
+		let service = pool.get(service_name).await.unwrap();
 		let req = GetPromptRequestParam {
 			name: tool.to_string(),
 			arguments: request.arguments,
@@ -199,7 +211,7 @@ impl ServerHandler for Relay {
 		// TODO: Handle individual errors
 		// TODO: Do we want to handle pagination here, or just pass it through?
 		tracing::info!("listing tools");
-		for (name, service) in self.state.read().await.targets.iter().await {
+		for (name, service) in self.pool.read().await.iter().await {
 			let result = service
 				.as_ref()
 				.read()
@@ -230,7 +242,7 @@ impl ServerHandler for Relay {
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<CallToolResult, McpError> {
 		tracing::info!("calling tool: {:?}", request);
-		if !self.state.read().await.policies.validate(
+		if !self.state.read().unwrap().policies.validate(
 			&rbac::ResourceType::Tool {
 				id: request.name.to_string(),
 			},
@@ -240,8 +252,8 @@ impl ServerHandler for Relay {
 		}
 		let tool_name = request.name.to_string();
 		let (service_name, tool) = tool_name.split_once(':').unwrap();
-		let state = self.state.read().await;
-		let service = state.targets.get(service_name).await.unwrap();
+		let pool = self.pool.read().await;
+		let service = pool.get(service_name).await.unwrap();
 		let req = CallToolRequestParam {
 			name: Cow::Owned(tool.to_string()),
 			arguments: request.arguments,
@@ -249,5 +261,92 @@ impl ServerHandler for Relay {
 
 		let result = service.as_ref().read().await.call_tool(req).await.unwrap();
 		Ok(result)
+	}
+}
+
+#[derive(Clone)]
+pub struct ConnectionPool {
+	state: Arc<std::sync::RwLock<XdsStore>>,
+
+	by_name: Arc<RwLock<HashMap<String, Arc<RwLock<RunningService<ClientHandlerService>>>>>>,
+}
+
+impl ConnectionPool {
+	pub fn new(state: Arc<std::sync::RwLock<XdsStore>>) -> Self {
+		Self {
+			state,
+			by_name: Arc::new(RwLock::new(HashMap::new())),
+		}
+	}
+
+	pub async fn get(&self, name: &str) -> Option<Arc<RwLock<RunningService<ClientHandlerService>>>> {
+		match self.by_name.read().await.get(name) {
+			Some(connection) => Some(connection.clone()),
+			None => {
+				let target = { self.state.read().unwrap().targets.get(name).cloned() };
+				match target {
+					Some(target) => {
+						let connection = self.connect(&target).await.unwrap();
+						Some(connection)
+					},
+					None => {
+						tracing::error!("Target not found: {}", name);
+						// Need to demand it, but this should never happen
+						None
+					},
+				}
+			},
+		}
+	}
+
+	pub async fn iter(
+		&self,
+	) -> impl Iterator<Item = (String, Arc<RwLock<RunningService<ClientHandlerService>>>)> {
+		// Iterate through all state targets, and get the connection from the pool
+		// If the connection is not in the pool, connect to it and add it to the pool
+		let targets: Vec<(String, Target)> = {
+			let state = self.state.read().unwrap();
+			state
+				.targets
+				.iter()
+				.map(|(name, target)| (name.clone(), target.clone()))
+				.collect()
+		};
+		let x = targets.iter().map(|(name, target)| async move {
+			let connection = self.get(name).await.unwrap();
+			(name.clone(), connection)
+		});
+
+		futures::future::join_all(x).await.into_iter()
+	}
+
+	async fn connect(
+		&self,
+		target: &Target,
+	) -> Result<Arc<RwLock<RunningService<ClientHandlerService>>>, anyhow::Error> {
+		let transport: RunningService<ClientHandlerService> = match &target.spec {
+			TargetSpec::Sse { host, port } => {
+				tracing::info!("starting sse transport for target: {}", target.name);
+				let transport: SseTransport = SseTransport::start(
+					format!("http://{}:{}", host, port).as_str(),
+					Default::default(),
+				)
+				.await?;
+				serve_client(ClientHandlerService::simple(), transport).await?
+			},
+			TargetSpec::Stdio { cmd, args } => {
+				tracing::info!("starting stdio transport for target: {}", target.name);
+				serve_client(
+					ClientHandlerService::simple(),
+					TokioChildProcess::new(Command::new(cmd).args(args)).unwrap(),
+				)
+				.await?
+			},
+		};
+		let connection = Arc::new(RwLock::new(transport));
+		// We need to drop this lock quick
+		let mut by_name = self.by_name.write().await;
+		by_name.insert(target.name.clone(), connection.clone());
+		Ok(connection)
 	}
 }

@@ -4,11 +4,16 @@ use mcp_gateway::config::Config as XdsConfig;
 use mcp_gateway::r#static::{StaticConfig, run_local_client};
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::task::JoinSet;
 use tracing_subscriber::{self, EnvFilter};
 
 use mcp_gateway::metrics::App as MetricsApp;
+use mcp_gateway::xds;
+use mcp_gateway::xds::ProxyStateUpdater;
+use mcp_gateway::xds::XdsStore as ProxyState;
+use mcp_gateway::xds::types::mcp::kgateway_dev::rbac::Config as XdsRbac;
+use mcp_gateway::xds::types::mcp::kgateway_dev::target::Target as XdsTarget;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -41,7 +46,7 @@ async fn main() -> Result<()> {
 		.with_ansi(false)
 		.init();
 
-	let registry = Registry::default();
+	let mut registry = Registry::default();
 
 	let args = Args::parse();
 
@@ -69,36 +74,73 @@ async fn main() -> Result<()> {
 		},
 	};
 
-	let local = match cfg {
-		Config::Static(cfg) => cfg,
-		Config::Xds(_) => {
-			eprintln!("XDS config not supported yet");
-			std::process::exit(1);
+	match cfg {
+		Config::Static(cfg) => {
+			let mut run_set = JoinSet::new();
+
+			run_set.spawn(async move {
+				run_local_client(cfg)
+					.await
+					.map_err(|e| anyhow::anyhow!("error running local client: {:?}", e))
+			});
+
+			// Add metrics listener
+			let listener = tokio::net::TcpListener::bind("0.0.0.0:19000").await?;
+			let app = MetricsApp::new(Arc::new(registry));
+			let router = app.router();
+			run_set.spawn(async move {
+				axum::serve(listener, router)
+					.await
+					.map_err(|e| anyhow::anyhow!("error serving metrics: {:?}", e))
+			});
+
+			// Wait for all servers to finish? I think this does what I want :shrug:
+			while let Some(result) = run_set.join_next().await {
+				result.unwrap();
+			}
+		},
+		Config::Xds(cfg) => {
+			let metrics = xds::metrics::Metrics::new(&mut registry);
+			let awaiting_ready = tokio::sync::watch::channel(()).0;
+			let state = Arc::new(RwLock::new(ProxyState::new()));
+			let state_clone = state.clone();
+			let updater = ProxyStateUpdater::new(state_clone);
+			let xds_config = xds::client::Config::new(Arc::new(cfg));
+			let mut ads_client = xds_config
+				.with_watched_handler::<XdsTarget>(xds::TARGET_TYPE, updater.clone())
+				.with_watched_handler::<XdsRbac>(xds::RBAC_TYPE, updater)
+				.build(metrics, awaiting_ready);
+
+			let mut run_set = JoinSet::new();
+
+			run_set.spawn(async move {
+				ads_client
+					.run()
+					.await
+					.map_err(|e| anyhow::anyhow!("error running xds client: {:?}", e))
+			});
+
+			// Add metrics listener
+			let listener = tokio::net::TcpListener::bind("0.0.0.0:19000").await?;
+			let app = MetricsApp::new(Arc::new(registry));
+			let router = app.router();
+			run_set.spawn(async move {
+				axum::serve(listener, router)
+					.await
+					.map_err(|e| anyhow::anyhow!("error serving metrics: {:?}", e))
+			});
+
+			// Wait for all servers to finish? I think this does what I want :shrug:
+			while let Some(result) = run_set.join_next().await {
+				result.unwrap();
+			}
 		},
 	};
 
-	let mut run_set = JoinSet::new();
-
-	run_set.spawn(async move {
-		run_local_client(local)
-			.await
-			.map_err(|e| anyhow::anyhow!("error running local client: {:?}", e))
-	});
-
-	// Add metrics listener
-	let listener = tokio::net::TcpListener::bind("0.0.0.0:19000").await?;
-	let app = MetricsApp::new(Arc::new(registry));
-	let router = app.router();
-	run_set.spawn(async move {
-		axum::serve(listener, router)
-			.await
-			.map_err(|e| anyhow::anyhow!("error serving metrics: {:?}", e))
-	});
-
-	// Wait for all servers to finish? I think this does what I want :shrug:
-	while let Some(result) = run_set.join_next().await {
-		result.unwrap();
-		// result?;
-	}
 	Ok(())
 }
+
+/*
+Listener(1) -> Relay(1) -> Target(1-n)
+Listener(1) -> Relay(1) -> Target(1-n)
+ */

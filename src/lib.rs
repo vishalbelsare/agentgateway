@@ -6,7 +6,6 @@ pub mod rbac;
 pub mod relay;
 pub mod signal;
 pub mod sse;
-pub mod state;
 pub mod r#static;
 pub mod strng;
 pub mod version;

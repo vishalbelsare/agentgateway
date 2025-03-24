@@ -1,3 +1,6 @@
+use crate::strng;
+use crate::strng::Strng;
+
 // We don't control the codegen, so disable any code warnings in the
 // proto modules.
 #[allow(warnings)]
@@ -25,3 +28,8 @@ pub mod mcp {
 		}
 	}
 }
+
+pub const TARGET_TYPE: Strng =
+	strng::literal!("type.googleapis.com/mcp.kgateway.dev.target.v1alpha1.Target");
+pub const RBAC_TYPE: Strng =
+	strng::literal!("type.googleapis.com/mcp.kgateway.dev.rbac.v1alpha1.Config");

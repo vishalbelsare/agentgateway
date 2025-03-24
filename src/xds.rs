@@ -30,13 +30,17 @@ use xds::mcp::kgateway_dev::target::Target as XdsTarget;
 
 use self::envoy::service::discovery::v3::DeltaDiscoveryRequest;
 use crate::rbac;
-use crate::state::{State as ProxyState, Target};
 use crate::strng::Strng;
 use crate::xds;
+use std::collections::HashMap;
 
-mod client;
+use crate::xds::mcp::kgateway_dev::listener::Listener as XdsListener;
+use serde::{Deserialize, Serialize};
+use tokio::sync::oneshot;
+
+pub mod client;
 pub mod metrics;
-mod types;
+pub mod types;
 
 struct DisplayStatus<'a>(&'a tonic::Status);
 
@@ -92,13 +96,13 @@ pub struct ProxyStateUpdateMutator {}
 
 #[derive(Clone)]
 pub struct ProxyStateUpdater {
-	state: Arc<RwLock<ProxyState>>,
+	state: Arc<RwLock<XdsStore>>,
 	updater: ProxyStateUpdateMutator,
 }
 
 impl ProxyStateUpdater {
 	/// Creates a new updater for the given stores. Will prefetch certs when workloads are updated.
-	pub fn new(state: Arc<RwLock<ProxyState>>) -> Self {
+	pub fn new(state: Arc<RwLock<XdsStore>>) -> Self {
 		Self {
 			state,
 			updater: ProxyStateUpdateMutator {},
@@ -113,7 +117,7 @@ impl ProxyStateUpdateMutator {
         skip_all,
         fields(name=%target.name),
     )]
-	pub fn insert_target(&self, state: &mut ProxyState, target: XdsTarget) -> anyhow::Result<()> {
+	pub fn insert_target(&self, state: &mut XdsStore, target: XdsTarget) -> anyhow::Result<()> {
 		let target = Target::from(&target);
 		// TODO: This is a hack
 		// TODO: Separate connection/LB from insertion
@@ -127,7 +131,7 @@ impl ProxyStateUpdateMutator {
         skip_all,
         fields(name=%xds_name),
     )]
-	pub fn remove_target(&self, state: &mut ProxyState, xds_name: &Strng) {
+	pub fn remove_target(&self, state: &mut XdsStore, xds_name: &Strng) {
 		state.targets.remove(xds_name);
 	}
 
@@ -136,7 +140,7 @@ impl ProxyStateUpdateMutator {
         name="insert_rbac",
         skip_all,
     )]
-	pub fn insert_rbac(&self, state: &mut ProxyState, rbac: XdsRbac) -> anyhow::Result<()> {
+	pub fn insert_rbac(&self, state: &mut XdsStore, rbac: XdsRbac) -> anyhow::Result<()> {
 		let rule_set = rbac::RuleSet::from(&rbac);
 		state.policies.insert(rule_set);
 		Ok(())
@@ -148,7 +152,7 @@ impl ProxyStateUpdateMutator {
         skip_all,
         fields(name=%xds_name),
     )]
-	pub fn remove_rbac(&self, state: &mut ProxyState, xds_name: &Strng) {
+	pub fn remove_rbac(&self, state: &mut XdsStore, xds_name: &Strng) {
 		state.policies.remove(xds_name);
 	}
 }
@@ -184,5 +188,153 @@ impl Handler<XdsRbac> for ProxyStateUpdater {
 			Ok(())
 		};
 		handle_single_resource(updates, handle)
+	}
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+pub struct Target {
+	pub name: String,
+	pub spec: TargetSpec,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[serde(tag = "type")]
+pub enum TargetSpec {
+	#[serde(rename = "sse")]
+	Sse { host: String, port: u32 },
+	#[serde(rename = "stdio")]
+	Stdio { cmd: String, args: Vec<String> },
+}
+
+impl From<&XdsTarget> for Target {
+	fn from(value: &XdsTarget) -> Self {
+		Target {
+			name: value.name.clone(),
+			spec: {
+				TargetSpec::Sse {
+					host: value.host.clone(),
+					port: value.port,
+				}
+			},
+		}
+	}
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[serde(tag = "type")]
+pub enum Listener {
+	#[serde(rename = "sse")]
+	Sse {
+		host: String,
+		port: u32,
+		mode: Option<ListenerMode>,
+	},
+	#[serde(rename = "stdio")]
+	Stdio {},
+}
+
+impl From<&XdsListener> for Listener {
+	fn from(value: &XdsListener) -> Self {
+		Listener::Sse {
+			host: value.host.clone(),
+			port: value.port,
+			mode: None,
+		}
+	}
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+pub enum ListenerMode {
+	#[serde(rename = "proxy")]
+	Proxy,
+}
+
+impl Default for Listener {
+	fn default() -> Self {
+		Self::Stdio {}
+	}
+}
+
+pub struct TargetStore {
+	by_name: HashMap<String, Target>,
+}
+
+impl TargetStore {
+	pub fn new() -> Self {
+		Self {
+			by_name: HashMap::new(),
+		}
+	}
+
+	pub fn remove(&mut self, name: &str) {
+		// TODO: Drain connections from target
+		self.by_name.remove(name);
+	}
+
+	pub fn insert(&mut self, target: Target) {
+		self.by_name.insert(target.name.clone(), target);
+	}
+
+	pub fn get(&self, name: &str) -> Option<&Target> {
+		self.by_name.get(name)
+	}
+
+	pub fn iter(&self) -> impl Iterator<Item = (String, &Target)> {
+		self
+			.by_name
+			.iter()
+			.map(|(name, target)| (name.clone(), target))
+	}
+
+	pub fn clear(&mut self) {
+		self.by_name.clear();
+	}
+}
+
+pub struct PolicyStore {
+	by_name: HashMap<String, rbac::RuleSet>,
+}
+
+impl PolicyStore {
+	pub fn new() -> Self {
+		Self {
+			by_name: HashMap::new(),
+		}
+	}
+}
+
+impl PolicyStore {
+	pub fn insert(&mut self, policy: rbac::RuleSet) {
+		self.by_name.insert(policy.to_key(), policy);
+	}
+
+	pub fn remove(&mut self, name: &str) {
+		self.by_name.remove(name);
+	}
+
+	pub fn validate(&self, resource: &rbac::ResourceType, claims: &rbac::Identity) -> bool {
+		self
+			.by_name
+			.values()
+			.into_iter()
+			.any(|policy| policy.validate(resource, claims))
+	}
+
+	pub fn clear(&mut self) {
+		self.by_name.clear();
+	}
+}
+
+pub struct XdsStore {
+	pub targets: TargetStore,
+	pub policies: PolicyStore,
+}
+
+impl XdsStore {
+	pub fn new() -> Self {
+		Self {
+			targets: TargetStore::new(),
+			policies: PolicyStore::new(),
+		}
 	}
 }

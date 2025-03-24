@@ -7,7 +7,7 @@ use crate::proxyprotocol;
 use crate::rbac;
 use crate::relay::Relay;
 use crate::sse::App as SseApp;
-use crate::state::{Listener, ListenerMode, State as ProxyState, Target};
+use crate::xds::{Listener, ListenerMode, Target, XdsStore as ProxyState};
 use axum::http::HeaderMap;
 use tokio::sync::RwLock;
 
@@ -39,13 +39,7 @@ pub async fn run_local_client(cfg: StaticConfig) -> Result<(), ServingError> {
 	}
 	let rule_set = rbac::RuleSet::new("test".to_string(), "test".to_string(), cfg.policies);
 	state.policies.insert(rule_set);
-	let state = Arc::new(RwLock::new(state));
-	let state_clone = state.clone();
-	tokio::spawn(async move {
-		// This is permanently holding the lock
-		let state = state_clone.read().await;
-		state.run().await.unwrap();
-	});
+	let state = Arc::new(std::sync::RwLock::new(state));
 	info!(%num_targets, %num_policies, "local config initialized");
 	serve(cfg.listener, state).await
 }
@@ -58,7 +52,7 @@ pub enum ServingError {
 
 async fn serve(
 	listener: Listener,
-	state: Arc<RwLock<ProxyState>>,
+	state: Arc<std::sync::RwLock<ProxyState>>,
 ) -> std::result::Result<(), ServingError> {
 	match listener {
 		Listener::Stdio {} => {
@@ -105,4 +99,8 @@ async fn serve(
 				})
 		},
 	}
+}
+
+struct State {
+	xds_state: Arc<RwLock<ProxyState>>,
 }
