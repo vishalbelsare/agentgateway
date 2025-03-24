@@ -100,6 +100,11 @@ data:
       "type": "xds",
       "xds_address": "http://kgateway.kgateway-system.svc.cluster.local:9977",
       "metadata": {},
-      "alt_xds_hostname": "mcp-gateway.default.svc.cluster.local"
+      "alt_xds_hostname": "mcp-gateway.default.svc.cluster.local",
+      "listener": {
+        "type": "sse",
+        "host": "0.0.0.0",
+        "port": 8080
+      }
     }
 
