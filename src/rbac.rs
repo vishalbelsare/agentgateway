@@ -1,8 +1,5 @@
-use crate::proxyprotocol::Address;
 use crate::xds::mcp::kgateway_dev::rbac::rule;
 use crate::xds::mcp::kgateway_dev::rbac::{Config as XdsRuleSet, Rule as XdsRule};
-use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
-use http::header::{AUTHORIZATION, HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::map::Map;
@@ -135,14 +132,11 @@ pub struct Identity {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Claims(Map<String, Value>);
+pub struct Claims(pub Map<String, Value>);
 
 impl Claims {
 	pub fn new(claims: Map<String, Value>) -> Self {
 		Self(claims)
-	}
-	pub fn claims(self) -> Map<String, Value> {
-		self.0
 	}
 }
 

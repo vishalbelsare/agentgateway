@@ -6,14 +6,15 @@ use rmcp::{
 };
 use std::borrow::Cow;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 #[derive(Clone)]
 pub struct Relay {
-	state: Arc<State>,
+	state: Arc<RwLock<State>>,
 	id: rbac::Identity,
 }
 
 impl Relay {
-	pub fn new(state: Arc<State>, id: rbac::Identity) -> Self {
+	pub fn new(state: Arc<RwLock<State>>, id: rbac::Identity) -> Self {
 		Self { state, id }
 	}
 }
@@ -44,15 +45,20 @@ impl ServerHandler for Relay {
 		request: PaginatedRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListResourcesResult, McpError> {
-		let all = self.state.targets.iter().await.map(|(_name, svc)| async {
-			let result = svc
-				.as_ref()
-				.read()
-				.await
-				.list_resources(request.clone())
-				.await
-				.unwrap();
-			result.resources
+		let state = self.state.read().await;
+		let all = state.targets.iter().await.map(|(_name, svc)| {
+			let svc = svc.clone();
+			let request = request.clone();
+			async move {
+				let result = svc
+					.as_ref()
+					.read()
+					.await
+					.list_resources(request)
+					.await
+					.unwrap();
+				result.resources
+			}
 		});
 
 		Ok(ListResourcesResult {
@@ -70,15 +76,20 @@ impl ServerHandler for Relay {
 		request: ReadResourceRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ReadResourceResult, McpError> {
-		let all = self.state.targets.iter().await.map(|(_name, svc)| async {
-			let result = svc
-				.as_ref()
-				.read()
-				.await
-				.read_resource(request.clone())
-				.await
-				.unwrap();
-			result.contents
+		let state = self.state.read().await;
+		let all = state.targets.iter().await.map(|(_name, svc)| {
+			let svc = svc.clone();
+			let request = request.clone();
+			async move {
+				let result = svc
+					.as_ref()
+					.read()
+					.await
+					.read_resource(request)
+					.await
+					.unwrap();
+				result.contents
+			}
 		});
 
 		Ok(ReadResourceResult {
@@ -95,15 +106,20 @@ impl ServerHandler for Relay {
 		request: PaginatedRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListResourceTemplatesResult, McpError> {
-		let all = self.state.targets.iter().await.map(|(_name, svc)| async {
-			let result = svc
-				.as_ref()
-				.read()
-				.await
-				.list_resource_templates(request.clone())
-				.await
-				.unwrap();
-			result.resource_templates
+		let state = self.state.read().await;
+		let all = state.targets.iter().await.map(|(_name, svc)| {
+			let svc = svc.clone();
+			let request = request.clone();
+			async move {
+				let result = svc
+					.as_ref()
+					.read()
+					.await
+					.list_resource_templates(request)
+					.await
+					.unwrap();
+				result.resource_templates
+			}
 		});
 
 		Ok(ListResourceTemplatesResult {
@@ -121,15 +137,20 @@ impl ServerHandler for Relay {
 		request: PaginatedRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListPromptsResult, McpError> {
-		let all = self.state.targets.iter().await.map(|(_name, svc)| async {
-			let result = svc
-				.as_ref()
-				.read()
-				.await
-				.list_prompts(request.clone())
-				.await
-				.unwrap();
-			result.prompts
+		let state = self.state.read().await;
+		let all = state.targets.iter().await.map(|(_name, svc)| {
+			let svc = svc.clone();
+			let request = request.clone();
+			async move {
+				let result = svc
+					.as_ref()
+					.read()
+					.await
+					.list_prompts(request)
+					.await
+					.unwrap();
+				result.prompts
+			}
 		});
 
 		Ok(ListPromptsResult {
@@ -147,7 +168,7 @@ impl ServerHandler for Relay {
 		request: GetPromptRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<GetPromptResult, McpError> {
-		if !self.state.policies.validate(
+		if !self.state.read().await.policies.validate(
 			&rbac::ResourceType::Prompt {
 				id: request.name.to_string(),
 			},
@@ -157,7 +178,8 @@ impl ServerHandler for Relay {
 		}
 		let tool_name = request.name.to_string();
 		let (service_name, tool) = tool_name.split_once(':').unwrap();
-		let service = self.state.targets.get(service_name).await.unwrap();
+		let state = self.state.read().await;
+		let service = state.targets.get(service_name).await.unwrap();
 		let req = GetPromptRequestParam {
 			name: tool.to_string(),
 			arguments: request.arguments,
@@ -176,7 +198,8 @@ impl ServerHandler for Relay {
 		// TODO: Use iterators
 		// TODO: Handle individual errors
 		// TODO: Do we want to handle pagination here, or just pass it through?
-		for (name, service) in self.state.targets.iter().await {
+		tracing::info!("listing tools");
+		for (name, service) in self.state.read().await.targets.iter().await {
 			let result = service
 				.as_ref()
 				.read()
@@ -184,8 +207,10 @@ impl ServerHandler for Relay {
 				.list_tools(request.clone())
 				.await
 				.unwrap();
+			tracing::info!("result: {:?}", result);
 			for tool in result.tools {
 				let tool_name = format!("{}:{}", name, tool.name);
+				tracing::info!("tool: {}", tool_name);
 				tools.push(Tool {
 					name: Cow::Owned(tool_name),
 					description: tool.description,
@@ -204,7 +229,8 @@ impl ServerHandler for Relay {
 		request: CallToolRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<CallToolResult, McpError> {
-		if !self.state.policies.validate(
+		tracing::info!("calling tool: {:?}", request);
+		if !self.state.read().await.policies.validate(
 			&rbac::ResourceType::Tool {
 				id: request.name.to_string(),
 			},
@@ -214,7 +240,8 @@ impl ServerHandler for Relay {
 		}
 		let tool_name = request.name.to_string();
 		let (service_name, tool) = tool_name.split_once(':').unwrap();
-		let service = self.state.targets.get(service_name).await.unwrap();
+		let state = self.state.read().await;
+		let service = state.targets.get(service_name).await.unwrap();
 		let req = CallToolRequestParam {
 			name: Cow::Owned(tool.to_string()),
 			arguments: request.arguments,

@@ -23,7 +23,7 @@ struct Args {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[serde(tag = "type", deny_unknown_fields)]
 pub enum Config {
 	#[serde(rename = "static")]
 	Static(StaticConfig),
@@ -80,7 +80,9 @@ async fn main() -> Result<()> {
 	let mut run_set = JoinSet::new();
 
 	run_set.spawn(async move {
-		run_local_client(local).await;
+		run_local_client(local)
+			.await
+			.map_err(|e| anyhow::anyhow!("error running local client: {:?}", e))
 	});
 
 	// Add metrics listener
@@ -88,12 +90,15 @@ async fn main() -> Result<()> {
 	let app = MetricsApp::new(Arc::new(registry));
 	let router = app.router();
 	run_set.spawn(async move {
-		axum::serve(listener, router).await;
+		axum::serve(listener, router)
+			.await
+			.map_err(|e| anyhow::anyhow!("error serving metrics: {:?}", e))
 	});
 
 	// Wait for all servers to finish? I think this does what I want :shrug:
 	while let Some(result) = run_set.join_next().await {
-		result?;
+		result.unwrap();
+		// result?;
 	}
 	Ok(())
 }

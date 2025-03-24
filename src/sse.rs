@@ -1,4 +1,6 @@
+use crate::relay::Relay;
 use crate::state::State as AppState;
+use crate::{proxyprotocol, rbac};
 use anyhow::Result;
 use axum::extract::ConnectInfo;
 use axum::{
@@ -10,12 +12,13 @@ use axum::{
 	response::{IntoResponse, Response},
 	routing::get,
 };
+use axum_extra::typed_header::TypedHeaderRejection;
 use axum_extra::{
 	TypedHeader,
 	headers::{Authorization, authorization::Bearer},
 };
 use futures::{SinkExt, StreamExt, stream::Stream};
-use jsonwebtoken::{DecodingKey, Validation, decode};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use rmcp::model::ClientJsonRpcMessage;
 use rmcp::{ServerHandlerService, serve_server};
 use serde_json::Value;
@@ -24,9 +27,7 @@ use serde_json::map::Map;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{self};
-
-use crate::relay::Relay;
-use crate::{proxyprotocol, rbac};
+use tokio::sync::RwLock;
 type SessionId = Arc<str>;
 
 fn session_id() -> SessionId {
@@ -36,13 +37,13 @@ fn session_id() -> SessionId {
 
 #[derive(Clone)]
 pub struct App {
-	state: Arc<AppState>,
+	state: Arc<RwLock<AppState>>,
 	txs:
 		Arc<tokio::sync::RwLock<HashMap<SessionId, tokio::sync::mpsc::Sender<ClientJsonRpcMessage>>>>,
 }
 
 impl App {
-	pub fn new(state: Arc<AppState>) -> Self {
+	pub fn new(state: Arc<RwLock<AppState>>) -> Self {
 		Self {
 			state,
 			txs: Default::default(),
@@ -59,15 +60,19 @@ impl FromRequestParts<App> for rbac::Claims {
 	type Rejection = AuthError;
 
 	async fn from_request_parts(parts: &mut Parts, _state: &App) -> Result<Self, Self::Rejection> {
+		tracing::info!("from_request_parts");
 		// Extract the token from the authorization header
 		let TypedHeader(Authorization(bearer)) = parts
 			.extract::<TypedHeader<Authorization<Bearer>>>()
 			.await
-			.map_err(|_| AuthError::InvalidToken)?;
+			.map_err(|e| AuthError::NoAuthHeaderPresent(e))?;
 		// Decode the user data
-		let key = DecodingKey::from_secret(b"secret");
-		let token_data = decode::<Map<String, Value>>(bearer.token(), &key, &Validation::default())
-			.map_err(|_| AuthError::InvalidToken)?;
+		let key = DecodingKey::from_secret(
+			b"a-valid-string-secret-that-is-at-least-512-bits-long-which-is-very-long",
+		);
+		let token_data =
+			decode::<Map<String, Value>>(bearer.token(), &key, &Validation::new(Algorithm::HS512))
+				.map_err(|e| AuthError::InvalidToken(e))?;
 
 		Ok(rbac::Claims::new(token_data.claims))
 	}
@@ -76,7 +81,14 @@ impl FromRequestParts<App> for rbac::Claims {
 impl IntoResponse for AuthError {
 	fn into_response(self) -> Response {
 		let (status, error_message) = match self {
-			AuthError::InvalidToken => (StatusCode::BAD_REQUEST, "Invalid token"),
+			AuthError::NoAuthHeaderPresent(e) => (
+				StatusCode::BAD_REQUEST,
+				format!("No auth header present, error: {}", e),
+			),
+			AuthError::InvalidToken(e) => (
+				StatusCode::BAD_REQUEST,
+				format!("Invalid token, error: {}", e),
+			),
 		};
 		let body = Json(json!({
 				"error": error_message,
@@ -87,7 +99,8 @@ impl IntoResponse for AuthError {
 
 #[derive(Debug)]
 pub enum AuthError {
-	InvalidToken,
+	NoAuthHeaderPresent(TypedHeaderRejection),
+	InvalidToken(jsonwebtoken::errors::Error),
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -125,7 +138,7 @@ async fn sse_handler(
 	let session = session_id();
 	tracing::info!(%session, ?connection, "sse connection");
 	let claims = rbac::Identity::new(
-		Some(claims.claims()),
+		Some(claims.0),
 		match connection.identity {
 			Some(identity) => Some(identity),
 			None => None,
@@ -143,7 +156,7 @@ async fn sse_handler(
 	{
 		let session = session.clone();
 		tokio::spawn(async move {
-			let service = ServerHandlerService::new(Relay::new(app.state.clone(), claims));
+			let service = ServerHandlerService::new(Relay::new(app.state, claims));
 			let stream = ReceiverStream::new(from_client_rx);
 			let sink = PollSender::new(to_client_tx).sink_map_err(std::io::Error::other);
 			let result = serve_server(service, (sink, stream))

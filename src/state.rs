@@ -45,6 +45,7 @@ impl From<&XdsTarget> for Target {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[serde(tag = "type")]
 pub enum Listener {
 	#[serde(rename = "sse")]
 	Sse {
@@ -79,25 +80,28 @@ impl Default for Listener {
 }
 
 pub struct ConnectionPool {
-	demand_rx: mpsc::Receiver<(oneshot::Sender<()>, Target)>,
-	by_name: HashMap<String, Arc<RwLock<RunningService<ClientHandlerService>>>>,
+	demand_rx: RwLock<mpsc::Receiver<(oneshot::Sender<()>, Target)>>,
+	by_name: Arc<RwLock<HashMap<String, Arc<RwLock<RunningService<ClientHandlerService>>>>>>,
 }
 
 impl ConnectionPool {
 	pub fn new(demand_rx: mpsc::Receiver<(oneshot::Sender<()>, Target)>) -> Self {
 		Self {
-			demand_rx,
-			by_name: HashMap::new(),
+			demand_rx: RwLock::new(demand_rx),
+			by_name: Arc::new(RwLock::new(HashMap::new())),
 		}
 	}
 
-	// This watches for new targets and starts connections to them
-	pub async fn run(&mut self) -> Result<(), anyhow::Error> {
+	pub async fn run(&self) -> Result<(), anyhow::Error> {
+		tracing::info!("running connection pool");
 		loop {
-			match self.demand_rx.recv().await {
+      // Add workers lol
+			match self.demand_rx.write().await.recv().await {
 				Some((tx, target)) => {
+					tracing::info!("demand received for target: {}", target.name);
 					let transport: RunningService<ClientHandlerService> = match target.spec {
 						TargetSpec::Sse { host, port } => {
+							tracing::info!("starting sse transport for target: {}", target.name);
 							let transport: SseTransport = SseTransport::start(
 								format!("http://{}:{}", host, port).as_str(),
 								Default::default(),
@@ -106,6 +110,7 @@ impl ConnectionPool {
 							serve_client(ClientHandlerService::simple(), transport).await?
 						},
 						TargetSpec::Stdio { cmd, args } => {
+							tracing::info!("starting stdio transport for target: {}", target.name);
 							serve_client(
 								ClientHandlerService::simple(),
 								TokioChildProcess::new(Command::new(cmd).args(args)).unwrap(),
@@ -114,7 +119,9 @@ impl ConnectionPool {
 						},
 					};
 					let connection = Arc::new(RwLock::new(transport));
-					self.by_name.insert(target.name.clone(), connection.clone());
+					// We need to drop this lock quick
+					let mut by_name = self.by_name.write().await;
+					by_name.insert(target.name.clone(), connection.clone());
 					tx.send(()).unwrap();
 				},
 				None => {
@@ -125,8 +132,9 @@ impl ConnectionPool {
 		}
 	}
 
-	pub fn get(&self, name: &str) -> Option<&Arc<RwLock<RunningService<ClientHandlerService>>>> {
-		self.by_name.get(name)
+	pub async fn get(&self, name: &str) -> Option<Arc<RwLock<RunningService<ClientHandlerService>>>> {
+		let by_name = self.by_name.read().await;
+		by_name.get(name).cloned()
 	}
 }
 
@@ -147,6 +155,11 @@ impl TargetStore {
 		}
 	}
 
+	pub async fn run(&self) -> Result<(), anyhow::Error> {
+		tracing::info!("running target store");
+		self.connections.run().await
+	}
+
 	pub fn remove(&mut self, name: &str) {
 		// TODO: Drain connections from target
 		self.by_name.remove(name);
@@ -156,13 +169,11 @@ impl TargetStore {
 		self.by_name.insert(target.name.clone(), target);
 	}
 
-	pub async fn get(
-		&self,
-		name: &str,
-	) -> Option<&Arc<RwLock<RunningService<ClientHandlerService>>>> {
-		match self.connections.get(name) {
+	pub async fn get(&self, name: &str) -> Option<Arc<RwLock<RunningService<ClientHandlerService>>>> {
+		match self.connections.get(name).await {
 			Some(connection) => Some(connection),
 			None => {
+				tracing::info!("connection not found for target: {}", name);
 				// TODO: Handle error
 				let (tx, rx) = oneshot::channel();
 				// Send demand for connection
@@ -173,7 +184,7 @@ impl TargetStore {
 					.unwrap();
 				// Wait for connection
 				match rx.await {
-					Ok(_) => self.connections.get(name),
+					Ok(_) => self.connections.get(name).await,
 					Err(_) => {
 						tracing::error!("Connection not found for target: {}", name);
 						None
@@ -185,12 +196,12 @@ impl TargetStore {
 
 	pub async fn iter(
 		&self,
-	) -> impl Iterator<Item = (String, &Arc<RwLock<RunningService<ClientHandlerService>>>)> {
+	) -> impl Iterator<Item = (String, Arc<RwLock<RunningService<ClientHandlerService>>>)> {
 		let x = self
 			.by_name
 			.iter()
 			.map(|(name, _)| async move { (name.clone(), self.get(name).await) });
-
+    futures::stream::FuturesOrdered
 		futures::future::join_all(x)
 			.await
 			.into_iter()
@@ -248,5 +259,10 @@ impl State {
 			targets: TargetStore::new(),
 			policies: PolicyStore::new(),
 		}
+	}
+
+	pub async fn run(&self) -> Result<(), anyhow::Error> {
+		tracing::info!("running state");
+		self.targets.run().await
 	}
 }

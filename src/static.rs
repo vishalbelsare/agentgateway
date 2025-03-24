@@ -9,6 +9,7 @@ use crate::relay::Relay;
 use crate::sse::App as SseApp;
 use crate::state::{Listener, ListenerMode, State as ProxyState, Target};
 use axum::http::HeaderMap;
+use tokio::sync::RwLock;
 
 #[derive(Default, Debug, Eq, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -21,7 +22,7 @@ pub struct StaticConfig {
 	pub listener: Listener,
 }
 
-pub async fn run_local_client(cfg: StaticConfig) -> Result<(), anyhow::Error> {
+pub async fn run_local_client(cfg: StaticConfig) -> Result<(), ServingError> {
 	debug!(
 		"load local config: {}",
 		serde_yaml::to_string(&cfg).unwrap_or_default()
@@ -38,37 +39,70 @@ pub async fn run_local_client(cfg: StaticConfig) -> Result<(), anyhow::Error> {
 	}
 	let rule_set = rbac::RuleSet::new("test".to_string(), "test".to_string(), cfg.policies);
 	state.policies.insert(rule_set);
+	let state = Arc::new(RwLock::new(state));
+	let state_clone = state.clone();
+	tokio::spawn(async move {
+		// This is permanently holding the lock
+		let state = state_clone.read().await;
+		state.run().await.unwrap();
+	});
 	info!(%num_targets, %num_policies, "local config initialized");
 	serve(cfg.listener, state).await
 }
 
-async fn serve(listener: Listener, state: ProxyState) -> Result<(), anyhow::Error> {
+#[derive(Debug)]
+pub enum ServingError {
+	Sse(std::io::Error),
+	StdIo(tokio::task::JoinError),
+}
+
+async fn serve(
+	listener: Listener,
+	state: Arc<RwLock<ProxyState>>,
+) -> std::result::Result<(), ServingError> {
 	match listener {
 		Listener::Stdio {} => {
 			let relay = serve_server(
 				// TODO: This is a hack
-				ServerHandlerService::new(Relay::new(Arc::new(state), rbac::Identity::empty())),
+				ServerHandlerService::new(Relay::new(state.clone(), rbac::Identity::empty())),
 				(tokio::io::stdin(), tokio::io::stdout()),
 			)
 			.await
 			.inspect_err(|e| {
 				tracing::error!("serving error: {:?}", e);
-			})?;
-			relay.waiting().await?;
+			})
+			.unwrap();
+			tracing::info!("serving stdio");
+			relay
+				.waiting()
+				.await
+				.map_err(|e| ServingError::StdIo(e))
+				.map(|_| ())
+				.inspect_err(|e| {
+					tracing::error!("serving error: {:?}", e);
+				})
 		},
 		Listener::Sse { host, port, mode } => {
-			info!("serving sse on {}:{}", host, port);
-			let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
-			let app = SseApp::new(Arc::new(state));
+			let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port))
+				.await
+				.unwrap();
+			let app = SseApp::new(state.clone());
 			let router = app.router();
 
 			let enable_proxy = Some(&ListenerMode::Proxy) == mode.as_ref();
 
 			let listener = proxyprotocol::Listener::new(listener, enable_proxy);
-			let svc = router.into_make_service_with_connect_info::<proxyprotocol::Address>();
-			axum::serve(listener, svc).await?;
+			let svc: axum::extract::connect_info::IntoMakeServiceWithConnectInfo<
+				axum::Router,
+				proxyprotocol::Address,
+			> = router.into_make_service_with_connect_info::<proxyprotocol::Address>();
+			info!("serving sse on {}:{}", host, port);
+			axum::serve(listener, svc)
+				.await
+				.map_err(|e| ServingError::Sse(e))
+				.inspect_err(|e| {
+					tracing::error!("serving error: {:?}", e);
+				})
 		},
-	};
-
-	Ok(())
+	}
 }
