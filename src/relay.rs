@@ -5,7 +5,7 @@ use rmcp::serve_client;
 use rmcp::service::{RunningService, ServerSink, ServiceRole};
 use rmcp::transport::child_process::TokioChildProcess;
 use rmcp::transport::sse::SseTransport;
-use rmcp::{ClientHandler, ClientHandlerService, Peer, RoleClient, Service};
+use rmcp::{ClientHandler, Peer, RoleClient, Service};
 use rmcp::{
 	Error as McpError, RoleServer, ServerHandler, model::CallToolRequestParam, model::Tool, model::*,
 	service::RequestContext,
@@ -337,16 +337,15 @@ impl ConnectionPool {
 				tracing::trace!("starting sse transport for target: {}", target.name);
 				let transport: SseTransport = SseTransport::start(
 					format!("http://{}:{}", host, port).as_str(),
-					Default::default(),
 				)
 				.await?;
-				UpstreamTarget::MCP(serve_client(ClientHandlerService::simple(), transport).await?)
+				UpstreamTarget::MCP(serve_client((), transport).await?)
 			},
 			TargetSpec::Stdio { cmd, args } => {
 				tracing::trace!("starting stdio transport for target: {}", target.name);
 				UpstreamTarget::MCP(
 					serve_client(
-						ClientHandlerService::simple(),
+						(),
 						TokioChildProcess::new(Command::new(cmd).args(args)).unwrap(),
 					)
 					.await?,
@@ -374,7 +373,7 @@ impl ConnectionPool {
 /// UpstreamTarget defines a source for MCP information.
 #[derive(Debug)]
 enum UpstreamTarget {
-	MCP(RunningService<ClientHandlerService>),
+	MCP(RunningService<RoleClient, ()>),
 	OpenAPI(OpenAPIHandler),
 }
 

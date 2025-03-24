@@ -20,7 +20,7 @@ use axum_extra::{
 use futures::{SinkExt, StreamExt, stream::Stream};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use rmcp::model::ClientJsonRpcMessage;
-use rmcp::{ServerHandlerService, serve_server};
+use rmcp::serve_server;
 use serde_json::Value;
 use serde_json::json;
 use serde_json::map::Map;
@@ -163,10 +163,9 @@ async fn sse_handler(
 	{
 		let session = session.clone();
 		tokio::spawn(async move {
-			let service = ServerHandlerService::new(Relay::new(app.state.clone(), claims));
 			let stream = ReceiverStream::new(from_client_rx);
 			let sink = PollSender::new(to_client_tx).sink_map_err(std::io::Error::other);
-			let result = serve_server(service, (sink, stream))
+			let result = serve_server(Relay::new(app.state.clone(), claims), (sink, stream))
 				.await
 				.inspect_err(|e| {
 					tracing::error!("serving error: {:?}", e);

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tracing::{debug, info, trace};
 
-use rmcp::{ServerHandlerService, serve_server};
+use rmcp::serve_server;
 
 use crate::proxyprotocol;
 use crate::rbac;
@@ -64,7 +64,7 @@ pub async fn serve_static_listener(
 		Listener::Stdio {} => {
 			let relay = serve_server(
 				// TODO: This is a hack
-				ServerHandlerService::new(Relay::new(state.clone(), rbac::Identity::empty())),
+				Relay::new(state.clone(), rbac::Identity::empty()),
 				(tokio::io::stdin(), tokio::io::stdout()),
 			)
 			.await
