@@ -53,7 +53,12 @@ impl Display for BuildInfo {
 		write!(
 			f,
 			"version.BuildInfo{{RustVersion:\"{}\", BuildProfile:\"{}\", BuildStatus:\"{}\", GitTag:\"{}\", Version:\"{}\", GitRevision:\"{}\"}}",
-			self.rust_version, self.build_profile, self.build_status, self.git_tag, self.version, self.git_revision
+			self.rust_version,
+			self.build_profile,
+			self.build_status,
+			self.git_tag,
+			self.version,
+			self.git_revision
 		)
 	}
 }

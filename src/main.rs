@@ -138,7 +138,7 @@ async fn main() -> Result<()> {
 					.map_err(|e| anyhow::anyhow!("error running xds client: {:?}", e))
 			});
 
-      // Add admin listener
+			// Add admin listener
 			let state_3 = state.clone();
 			let listener = tokio::net::TcpListener::bind("127.0.0.1:19000").await?;
 			let app = AdminApp::new(state_3);
@@ -164,8 +164,6 @@ async fn main() -> Result<()> {
 					.await
 					.map_err(|e| anyhow::anyhow!("error serving metrics: {:?}", e))
 			});
-
-
 
 			// Wait for all servers to finish? I think this does what I want :shrug:
 			while let Some(result) = run_set.join_next().await {
