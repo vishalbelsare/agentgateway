@@ -2,7 +2,7 @@ use crate::relay::Relay;
 use crate::xds::XdsStore as AppState;
 use crate::{proxyprotocol, rbac};
 use anyhow::Result;
-use axum::extract::ConnectInfo;
+use axum::extract::{ConnectInfo, OptionalFromRequestParts};
 use axum::{
 	Json, RequestPartsExt, Router,
 	extract::FromRequestParts,
@@ -56,16 +56,23 @@ impl App {
 	}
 }
 
-impl FromRequestParts<App> for rbac::Claims {
+impl OptionalFromRequestParts<App> for rbac::Claims {
 	type Rejection = AuthError;
 
-	async fn from_request_parts(parts: &mut Parts, _state: &App) -> Result<Self, Self::Rejection> {
+	async fn from_request_parts(
+		parts: &mut Parts,
+		_state: &App,
+	) -> Result<Option<Self>, Self::Rejection> {
 		tracing::info!("from_request_parts");
 		// Extract the token from the authorization header
-		let TypedHeader(Authorization(bearer)) = parts
+		let Some(header) = parts
 			.extract::<TypedHeader<Authorization<Bearer>>>()
 			.await
-			.map_err(|e| AuthError::NoAuthHeaderPresent(e))?;
+			.ok()
+		else {
+			return Ok(None);
+		};
+		let TypedHeader(Authorization(bearer)) = header;
 		// Decode the user data
 		let key = DecodingKey::from_secret(
 			b"a-valid-string-secret-that-is-at-least-512-bits-long-which-is-very-long",
@@ -74,7 +81,7 @@ impl FromRequestParts<App> for rbac::Claims {
 			decode::<Map<String, Value>>(bearer.token(), &key, &Validation::new(Algorithm::HS512))
 				.map_err(|e| AuthError::InvalidToken(e))?;
 
-		Ok(rbac::Claims::new(token_data.claims))
+		Ok(Some(rbac::Claims::new(token_data.claims)))
 	}
 }
 
@@ -131,14 +138,14 @@ async fn post_event_handler(
 async fn sse_handler(
 	State(app): State<App>,
 	ConnectInfo(connection): ConnectInfo<proxyprotocol::Address>,
-	claims: rbac::Claims,
+	claims: Option<rbac::Claims>,
 ) -> Sse<impl Stream<Item = Result<Event, io::Error>>> {
 	// it's 4KB
 
 	let session = session_id();
 	tracing::info!(%session, ?connection, "sse connection");
 	let claims = rbac::Identity::new(
-		Some(claims.0),
+		claims.map(|c| c.0),
 		match connection.identity {
 			Some(identity) => Some(identity),
 			None => None,

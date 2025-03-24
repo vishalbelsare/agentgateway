@@ -11,7 +11,7 @@ use crate::xds::{Listener, ListenerMode, Target, XdsStore as ProxyState};
 use axum::http::HeaderMap;
 use tokio::sync::RwLock;
 
-#[derive(Default, Debug, Eq, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StaticConfig {
 	#[serde(default)]

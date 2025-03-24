@@ -32,6 +32,7 @@ use self::envoy::service::discovery::v3::DeltaDiscoveryRequest;
 use crate::rbac;
 use crate::strng::Strng;
 use crate::xds;
+use openapiv3::Paths;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -190,19 +191,30 @@ impl Handler<XdsRbac> for ProxyStateUpdater {
 	}
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Target {
 	pub name: String,
 	pub spec: TargetSpec,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 pub enum TargetSpec {
 	#[serde(rename = "sse")]
 	Sse { host: String, port: u32 },
 	#[serde(rename = "stdio")]
 	Stdio { cmd: String, args: Vec<String> },
+	#[serde(rename = "openapi")]
+	OpenAPI {
+		host: String,
+		port: u32,
+		schema: OpenAPISchema,
+	},
+}
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct OpenAPISchema {
+	// The crate OpenAPI type requires a lot more, we only need paths for now so use only a subset of it.
+	pub paths: Paths,
 }
 
 impl From<&XdsTarget> for Target {

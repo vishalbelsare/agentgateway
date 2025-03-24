@@ -70,7 +70,7 @@ fn main() -> Result<(), anyhow::Error> {
 	);
 	println!("cargo:rustc-env=MCPGW_BUILD_PROFILE_NAME={}", profile_name);
 
-  // This tells cargo to re-run this build script only when the proto files
+	// This tells cargo to re-run this build script only when the proto files
 	// we're interested in change or the any of the proto directories were updated.
 	for path in [proto_files, include_dirs].concat() {
 		println!("cargo:rerun-if-changed={}", path.to_str().unwrap());
