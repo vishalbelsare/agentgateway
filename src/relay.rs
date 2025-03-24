@@ -212,6 +212,7 @@ impl ServerHandler for Relay {
 		// TODO: Do we want to handle pagination here, or just pass it through?
 		tracing::info!("listing tools");
 		for (name, service) in self.pool.read().await.iter().await {
+			tracing::info!("listing tools for target: {}", name);
 			let result = service
 				.as_ref()
 				.read()
@@ -280,12 +281,20 @@ impl ConnectionPool {
 	}
 
 	pub async fn get(&self, name: &str) -> Option<Arc<RwLock<RunningService<ClientHandlerService>>>> {
-		match self.by_name.read().await.get(name) {
-			Some(connection) => Some(connection.clone()),
+		tracing::info!("getting connection for target: {}", name);
+		let by_name = self.by_name.read().await;
+		match by_name.get(name) {
+			Some(connection) => {
+				tracing::info!("connection found for target: {}", name);
+				Some(connection.clone())
+			},
 			None => {
 				let target = { self.state.read().unwrap().targets.get(name).cloned() };
 				match target {
 					Some(target) => {
+						// We want write access to the by_name map, so we drop the read lock
+						// TODO: Fix this
+						drop(by_name);
 						let connection = self.connect(&target).await.unwrap();
 						Some(connection)
 					},
@@ -304,6 +313,7 @@ impl ConnectionPool {
 	) -> impl Iterator<Item = (String, Arc<RwLock<RunningService<ClientHandlerService>>>)> {
 		// Iterate through all state targets, and get the connection from the pool
 		// If the connection is not in the pool, connect to it and add it to the pool
+		tracing::info!("iterating over targets");
 		let targets: Vec<(String, Target)> = {
 			let state = self.state.read().unwrap();
 			state
@@ -317,13 +327,16 @@ impl ConnectionPool {
 			(name.clone(), connection)
 		});
 
-		futures::future::join_all(x).await.into_iter()
+		let x = futures::future::join_all(x).await;
+		tracing::info!("x: {:?}", x);
+		x.into_iter()
 	}
 
 	async fn connect(
 		&self,
 		target: &Target,
 	) -> Result<Arc<RwLock<RunningService<ClientHandlerService>>>, anyhow::Error> {
+		tracing::info!("connecting to target: {}", target.name);
 		let transport: RunningService<ClientHandlerService> = match &target.spec {
 			TargetSpec::Sse { host, port } => {
 				tracing::info!("starting sse transport for target: {}", target.name);
@@ -344,9 +357,11 @@ impl ConnectionPool {
 			},
 		};
 		let connection = Arc::new(RwLock::new(transport));
+		tracing::info!("connection created for target: {}", target.name);
 		// We need to drop this lock quick
 		let mut by_name = self.by_name.write().await;
 		by_name.insert(target.name.clone(), connection.clone());
+		tracing::info!("connection inserted for target: {}", target.name);
 		Ok(connection)
 	}
 }
