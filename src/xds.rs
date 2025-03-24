@@ -283,6 +283,7 @@ impl Default for Listener {
 	}
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct TargetStore {
 	by_name: HashMap<String, Target>,
 }
@@ -319,6 +320,7 @@ impl TargetStore {
 	}
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PolicyStore {
 	by_name: HashMap<String, rbac::RuleSet>,
 }

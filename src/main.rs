@@ -8,6 +8,7 @@ use std::sync::{Arc, RwLock};
 use tokio::task::JoinSet;
 use tracing_subscriber::{self, EnvFilter};
 
+use mcp_gateway::admin::App as AdminApp;
 use mcp_gateway::metrics::App as MetricsApp;
 use mcp_gateway::xds;
 use mcp_gateway::xds::ProxyStateUpdater;
@@ -78,20 +79,36 @@ async fn main() -> Result<()> {
 		Config::Static(cfg) => {
 			let mut run_set = JoinSet::new();
 
+			let cfg_clone = cfg.clone();
+			let state = Arc::new(RwLock::new(ProxyState::new(cfg_clone.listener.clone())));
+
+			let state_2 = state.clone();
+			let cfg_clone = cfg.clone();
 			run_set.spawn(async move {
-				run_local_client(cfg)
+				run_local_client(&cfg_clone, state_2)
 					.await
 					.map_err(|e| anyhow::anyhow!("error running local client: {:?}", e))
 			});
 
 			// Add metrics listener
-			let listener = tokio::net::TcpListener::bind("0.0.0.0:19000").await?;
+			let listener = tokio::net::TcpListener::bind("127.0.0.1:9091").await?;
 			let app = MetricsApp::new(Arc::new(registry));
 			let router = app.router();
 			run_set.spawn(async move {
 				axum::serve(listener, router)
 					.await
 					.map_err(|e| anyhow::anyhow!("error serving metrics: {:?}", e))
+			});
+
+			// Add admin listener
+			let state_3 = state.clone();
+			let listener = tokio::net::TcpListener::bind("127.0.0.1:19000").await?;
+			let app = AdminApp::new(state_3);
+			let router = app.router();
+			run_set.spawn(async move {
+				axum::serve(listener, router)
+					.await
+					.map_err(|e| anyhow::anyhow!("error serving admin: {:?}", e))
 			});
 
 			// Wait for all servers to finish? I think this does what I want :shrug:
@@ -128,7 +145,7 @@ async fn main() -> Result<()> {
 			});
 
 			// Add metrics listener
-			let listener = tokio::net::TcpListener::bind("0.0.0.0:19000").await?;
+			let listener = tokio::net::TcpListener::bind("127.0.0.1:9091").await?;
 			let app = MetricsApp::new(Arc::new(registry));
 			let router = app.router();
 			run_set.spawn(async move {

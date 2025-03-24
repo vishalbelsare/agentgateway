@@ -1,7 +1,5 @@
 syntax = "proto3";
 
-import "google/protobuf/struct.proto";
-
 package mcp.kgateway.dev.rbac.v1alpha1;
 
 // A rule that defines a resource type and a key-value pair 

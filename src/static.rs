@@ -22,26 +22,32 @@ pub struct StaticConfig {
 	pub listener: Listener,
 }
 
-pub async fn run_local_client(cfg: StaticConfig) -> Result<(), ServingError> {
+pub async fn run_local_client(
+	cfg: &StaticConfig,
+	state_ref: Arc<std::sync::RwLock<ProxyState>>,
+) -> Result<(), ServingError> {
 	debug!(
 		"load local config: {}",
 		serde_yaml::to_string(&cfg).unwrap_or_default()
 	);
-	let mut state = ProxyState::new(cfg.listener.clone());
 	// Clear the state
-	state.targets.clear();
-	state.policies.clear();
-	let num_targets = cfg.targets.len();
-	let num_policies = cfg.policies.len();
-	for target in cfg.targets {
-		trace!("inserting target {}", &target.name);
-		state.targets.insert(target);
+	let state_clone = state_ref.clone();
+	{
+		let mut state = state_clone.write().unwrap();
+		state.targets.clear();
+		state.policies.clear();
+		let num_targets = cfg.targets.len();
+		let num_policies = cfg.policies.len();
+		for target in cfg.targets.clone() {
+			trace!("inserting target {}", &target.name);
+			state.targets.insert(target);
+		}
+		let rule_set = rbac::RuleSet::new("test".to_string(), "test".to_string(), cfg.policies.clone());
+		state.policies.insert(rule_set);
+		info!(%num_targets, %num_policies, "local config initialized");
 	}
-	let rule_set = rbac::RuleSet::new("test".to_string(), "test".to_string(), cfg.policies);
-	state.policies.insert(rule_set);
-	let state = Arc::new(std::sync::RwLock::new(state));
-	info!(%num_targets, %num_policies, "local config initialized");
-	serve_static_listener(cfg.listener, state).await
+
+	serve_static_listener(cfg.listener.clone(), state_ref).await
 }
 
 #[derive(Debug)]

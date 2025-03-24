@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod config;
 pub mod drain;
 pub mod metrics;

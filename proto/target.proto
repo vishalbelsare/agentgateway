@@ -1,7 +1,5 @@
 syntax = "proto3";
 
-import "google/protobuf/struct.proto";
-
 package mcp.kgateway.dev.target.v1alpha1;
 
 message Target {
