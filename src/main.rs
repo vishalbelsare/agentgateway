@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use mcp_gateway::config::Config as XdsConfig;
-use mcp_gateway::r#static::{StaticConfig, run_local_client};
+use mcp_gateway::r#static::{StaticConfig, run_local_client, serve_static_listener};
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
@@ -102,11 +102,12 @@ async fn main() -> Result<()> {
 		Config::Xds(cfg) => {
 			let metrics = xds::metrics::Metrics::new(&mut registry);
 			let awaiting_ready = tokio::sync::watch::channel(()).0;
-			let state = Arc::new(RwLock::new(ProxyState::new()));
+			let state = Arc::new(RwLock::new(ProxyState::new(cfg.listener.clone())));
 			let state_clone = state.clone();
 			let updater = ProxyStateUpdater::new(state_clone);
-			let xds_config = xds::client::Config::new(Arc::new(cfg));
-			let mut ads_client = xds_config
+			let cfg_clone = cfg.clone();
+			let xds_config = xds::client::Config::new(Arc::new(cfg_clone));
+			let ads_client = xds_config
 				.with_watched_handler::<XdsTarget>(xds::TARGET_TYPE, updater.clone())
 				.with_watched_handler::<XdsRbac>(xds::RBAC_TYPE, updater)
 				.build(metrics, awaiting_ready);
@@ -118,6 +119,12 @@ async fn main() -> Result<()> {
 					.run()
 					.await
 					.map_err(|e| anyhow::anyhow!("error running xds client: {:?}", e))
+			});
+
+			run_set.spawn(async move {
+				serve_static_listener(cfg.listener, state.clone())
+					.await
+					.map_err(|e| anyhow::anyhow!("error serving static listener: {:?}", e))
 			});
 
 			// Add metrics listener

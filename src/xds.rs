@@ -35,7 +35,7 @@ use crate::xds;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::oneshot;
+use std::collections::HashSet;
 
 pub mod client;
 pub mod metrics;
@@ -227,9 +227,48 @@ pub enum Listener {
 		host: String,
 		port: u32,
 		mode: Option<ListenerMode>,
+		authn: Option<Authn>,
 	},
 	#[serde(rename = "stdio")]
 	Stdio {},
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[serde(tag = "type")]
+pub enum Authn {
+	#[serde(rename = "jwt")]
+	Jwt(JwtConfig),
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+pub struct JwtConfig {
+	pub issuer: Option<HashSet<String>>,
+	pub audience: Option<HashSet<String>>,
+	pub subject: Option<String>,
+	pub jwks: JwksSource,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[serde(tag = "type")]
+pub enum JwksSource {
+	// #[serde(rename = "remote")]
+	// Remote(JwksRemoteSource),
+	#[serde(rename = "local")]
+	Local(JwksLocalSource),
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+pub struct JwksRemoteSource {
+	pub url: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[serde(tag = "type")]
+pub enum JwksLocalSource {
+	#[serde(rename = "file")]
+	File(std::path::PathBuf),
+	#[serde(rename = "inline")]
+	Inline(String),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -317,13 +356,15 @@ impl PolicyStore {
 pub struct XdsStore {
 	pub targets: TargetStore,
 	pub policies: PolicyStore,
+	pub listener: Listener,
 }
 
 impl XdsStore {
-	pub fn new() -> Self {
+	pub fn new(listener: Listener) -> Self {
 		Self {
 			targets: TargetStore::new(),
 			policies: PolicyStore::new(),
+			listener,
 		}
 	}
 }

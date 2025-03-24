@@ -27,7 +27,7 @@ pub async fn run_local_client(cfg: StaticConfig) -> Result<(), ServingError> {
 		"load local config: {}",
 		serde_yaml::to_string(&cfg).unwrap_or_default()
 	);
-	let mut state = ProxyState::new();
+	let mut state = ProxyState::new(cfg.listener.clone());
 	// Clear the state
 	state.targets.clear();
 	state.policies.clear();
@@ -41,7 +41,7 @@ pub async fn run_local_client(cfg: StaticConfig) -> Result<(), ServingError> {
 	state.policies.insert(rule_set);
 	let state = Arc::new(std::sync::RwLock::new(state));
 	info!(%num_targets, %num_policies, "local config initialized");
-	serve(cfg.listener, state).await
+	serve_static_listener(cfg.listener, state).await
 }
 
 #[derive(Debug)]
@@ -50,7 +50,7 @@ pub enum ServingError {
 	StdIo(tokio::task::JoinError),
 }
 
-async fn serve(
+pub async fn serve_static_listener(
 	listener: Listener,
 	state: Arc<std::sync::RwLock<ProxyState>>,
 ) -> std::result::Result<(), ServingError> {
@@ -76,7 +76,12 @@ async fn serve(
 					tracing::error!("serving error: {:?}", e);
 				})
 		},
-		Listener::Sse { host, port, mode } => {
+		Listener::Sse {
+			host,
+			port,
+			mode,
+			authn: _,
+		} => {
 			let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port))
 				.await
 				.unwrap();

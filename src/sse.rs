@@ -7,7 +7,7 @@ use axum::{
 	Json, RequestPartsExt, Router,
 	extract::FromRequestParts,
 	extract::{Query, State},
-	http::{HeaderMap, StatusCode, request::Parts},
+	http::{StatusCode, request::Parts},
 	response::sse::{Event, Sse},
 	response::{IntoResponse, Response},
 	routing::get,
@@ -27,7 +27,7 @@ use serde_json::map::Map;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{self};
-use tokio::sync::RwLock;
+
 type SessionId = Arc<str>;
 
 fn session_id() -> SessionId {
