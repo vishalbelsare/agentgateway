@@ -210,9 +210,8 @@ impl ServerHandler for Relay {
 		// TODO: Use iterators
 		// TODO: Handle individual errors
 		// TODO: Do we want to handle pagination here, or just pass it through?
-		tracing::info!("listing tools");
+		tracing::trace!("listing tools");
 		for (name, service) in self.pool.read().await.iter().await {
-			tracing::info!("listing tools for target: {}", name);
 			let result = service
 				.as_ref()
 				.read()
@@ -220,10 +219,8 @@ impl ServerHandler for Relay {
 				.list_tools(request.clone())
 				.await
 				.unwrap();
-			tracing::info!("result: {:?}", result);
 			for tool in result.tools {
 				let tool_name = format!("{}:{}", name, tool.name);
-				tracing::info!("tool: {}", tool_name);
 				tools.push(Tool {
 					name: Cow::Owned(tool_name),
 					description: tool.description,
@@ -242,7 +239,7 @@ impl ServerHandler for Relay {
 		request: CallToolRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<CallToolResult, McpError> {
-		tracing::info!("calling tool: {:?}", request);
+		tracing::trace!("calling tool: {:?}", request);
 		if !self.state.read().unwrap().policies.validate(
 			&rbac::ResourceType::Tool {
 				id: request.name.to_string(),
@@ -281,11 +278,11 @@ impl ConnectionPool {
 	}
 
 	pub async fn get(&self, name: &str) -> Option<Arc<RwLock<RunningService<ClientHandlerService>>>> {
-		tracing::info!("getting connection for target: {}", name);
+		tracing::trace!("getting connection for target: {}", name);
 		let by_name = self.by_name.read().await;
 		match by_name.get(name) {
 			Some(connection) => {
-				tracing::info!("connection found for target: {}", name);
+				tracing::trace!("connection found for target: {}", name);
 				Some(connection.clone())
 			},
 			None => {
@@ -313,7 +310,6 @@ impl ConnectionPool {
 	) -> impl Iterator<Item = (String, Arc<RwLock<RunningService<ClientHandlerService>>>)> {
 		// Iterate through all state targets, and get the connection from the pool
 		// If the connection is not in the pool, connect to it and add it to the pool
-		tracing::info!("iterating over targets");
 		let targets: Vec<(String, Target)> = {
 			let state = self.state.read().unwrap();
 			state
@@ -328,7 +324,6 @@ impl ConnectionPool {
 		});
 
 		let x = futures::future::join_all(x).await;
-		tracing::info!("x: {:?}", x);
 		x.into_iter()
 	}
 
@@ -336,10 +331,10 @@ impl ConnectionPool {
 		&self,
 		target: &Target,
 	) -> Result<Arc<RwLock<RunningService<ClientHandlerService>>>, anyhow::Error> {
-		tracing::info!("connecting to target: {}", target.name);
+		tracing::trace!("connecting to target: {}", target.name);
 		let transport: RunningService<ClientHandlerService> = match &target.spec {
 			TargetSpec::Sse { host, port } => {
-				tracing::info!("starting sse transport for target: {}", target.name);
+				tracing::trace!("starting sse transport for target: {}", target.name);
 				let transport: SseTransport = SseTransport::start(
 					format!("http://{}:{}", host, port).as_str(),
 					Default::default(),
@@ -348,7 +343,7 @@ impl ConnectionPool {
 				serve_client(ClientHandlerService::simple(), transport).await?
 			},
 			TargetSpec::Stdio { cmd, args } => {
-				tracing::info!("starting stdio transport for target: {}", target.name);
+				tracing::trace!("starting stdio transport for target: {}", target.name);
 				serve_client(
 					ClientHandlerService::simple(),
 					TokioChildProcess::new(Command::new(cmd).args(args)).unwrap(),
@@ -357,11 +352,9 @@ impl ConnectionPool {
 			},
 		};
 		let connection = Arc::new(RwLock::new(transport));
-		tracing::info!("connection created for target: {}", target.name);
 		// We need to drop this lock quick
 		let mut by_name = self.by_name.write().await;
 		by_name.insert(target.name.clone(), connection.clone());
-		tracing::info!("connection inserted for target: {}", target.name);
 		Ok(connection)
 	}
 }

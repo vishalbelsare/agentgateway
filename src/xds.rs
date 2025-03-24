@@ -34,7 +34,6 @@ use crate::strng::Strng;
 use crate::xds;
 use std::collections::HashMap;
 
-use crate::xds::mcp::kgateway_dev::listener::Listener as XdsListener;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
@@ -231,16 +230,6 @@ pub enum Listener {
 	},
 	#[serde(rename = "stdio")]
 	Stdio {},
-}
-
-impl From<&XdsListener> for Listener {
-	fn from(value: &XdsListener) -> Self {
-		Listener::Sse {
-			host: value.host.clone(),
-			port: value.port,
-			mode: None,
-		}
-	}
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]

@@ -20,9 +20,6 @@ pub mod mcp {
 		pub mod rbac {
 			tonic::include_proto!("mcp.kgateway.dev.rbac.v1alpha1");
 		}
-		pub mod listener {
-			tonic::include_proto!("mcp.kgateway.dev.listener.v1alpha1");
-		}
 		pub mod target {
 			tonic::include_proto!("mcp.kgateway.dev.target.v1alpha1");
 		}
