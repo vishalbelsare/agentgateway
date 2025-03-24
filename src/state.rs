@@ -201,7 +201,6 @@ impl TargetStore {
 			.by_name
 			.iter()
 			.map(|(name, _)| async move { (name.clone(), self.get(name).await) });
-    futures::stream::FuturesOrdered
 		futures::future::join_all(x)
 			.await
 			.into_iter()
