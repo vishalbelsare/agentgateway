@@ -1,4 +1,4 @@
-FROM rust:1.85.0-slim-bullseye AS builder 
+FROM docker.io/library/rust:1.85.1-slim-bookworm AS builder 
 
 ARG TARGETARCH
 
@@ -14,7 +14,7 @@ COPY common ./common
 
 RUN cargo build --release
 
-FROM ghcr.io/astral-sh/uv:0.6.5-debian-slim AS runner 
+FROM docker.io/library/debian:bookworm-slim AS runner 
 
 ARG TARGETARCH
 
@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     gnupg \
+    libssl3 \
     && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -33,9 +34,6 @@ RUN mkdir -p /etc/apt/keyrings \
     && apt-get update \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
-
-
-RUN uv python install 3.12
 
 COPY --from=builder /app/target/release/mcp-gateway /usr/local/bin/mcp-gateway
 COPY config.json /etc/mcp-gateway/config.json
