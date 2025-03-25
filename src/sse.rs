@@ -18,8 +18,8 @@ use axum_extra::{
 	headers::{Authorization, authorization::Bearer},
 };
 use futures::{SinkExt, StreamExt, stream::Stream};
-use jsonwebtoken::jwk::{Jwk, JwkSet};
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
+use jsonwebtoken::jwk::Jwk;
+use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use rmcp::model::ClientJsonRpcMessage;
 use rmcp::serve_server;
 use serde_json::Value;

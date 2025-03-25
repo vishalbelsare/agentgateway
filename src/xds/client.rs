@@ -1,24 +1,9 @@
-// Copyright Istio Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, mem};
 
-use axum::extract::connect_info::Connected;
 use prost::{DecodeError, EncodeError};
 use prost_types::value::Kind;
 use prost_types::{Struct, Value};
@@ -27,7 +12,6 @@ use split_iter::Splittable;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tonic::metadata::{AsciiMetadataKey, AsciiMetadataValue};
 use tracing::{Instrument, debug, error, info, info_span, warn};
 
 use crate::metrics::{IncrementRecorder, Recorder};

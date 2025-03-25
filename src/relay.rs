@@ -2,7 +2,7 @@ use crate::rbac;
 use crate::xds::{OpenAPISchema, Target, TargetSpec, XdsStore};
 use http::Method;
 use rmcp::serve_client;
-use rmcp::service::{RunningService, ServerSink, ServiceRole};
+use rmcp::service::RunningService;
 use rmcp::transport::child_process::TokioChildProcess;
 use rmcp::transport::sse::SseTransport;
 use rmcp::{ClientHandler, Peer, RoleClient};
@@ -10,7 +10,6 @@ use rmcp::{
 	Error as McpError, RoleServer, ServerHandler, model::CallToolRequestParam, model::Tool, model::*,
 	service::RequestContext,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::borrow::Cow;
 use std::collections::HashMap;

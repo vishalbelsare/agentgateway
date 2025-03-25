@@ -8,7 +8,6 @@ use crate::rbac;
 use crate::relay::Relay;
 use crate::sse::App as SseApp;
 use crate::xds::{Listener, ListenerMode, Target, XdsStore as ProxyState};
-use axum::http::HeaderMap;
 use tokio::sync::RwLock;
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
