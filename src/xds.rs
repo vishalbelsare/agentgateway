@@ -264,13 +264,9 @@ pub struct JwtConfig {
 #[serde(tag = "type")]
 pub enum JwksSource {
 	#[serde(rename = "remote")]
-	Remote{
-		url: String,
-	},
+	Remote { url: String },
 	#[serde(rename = "local")]
-	Local{
-    source: JwksLocalSource,
-  },
+	Local { source: JwksLocalSource },
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]

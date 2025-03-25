@@ -5,7 +5,7 @@ use rmcp::serve_client;
 use rmcp::service::{RunningService, ServerSink, ServiceRole};
 use rmcp::transport::child_process::TokioChildProcess;
 use rmcp::transport::sse::SseTransport;
-use rmcp::{ClientHandler, Peer, RoleClient, Service};
+use rmcp::{ClientHandler, Peer, RoleClient};
 use rmcp::{
 	Error as McpError, RoleServer, ServerHandler, model::CallToolRequestParam, model::Tool, model::*,
 	service::RequestContext,
@@ -14,12 +14,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::net::ToSocketAddrs;
-use std::ops::Deref;
 use std::sync::Arc;
 use tokio::process::Command;
 use tokio::sync::RwLock;
-use tonic::IntoRequest;
 
 #[derive(Clone)]
 pub struct Relay {
@@ -35,6 +32,28 @@ impl Relay {
 			pool: Arc::new(RwLock::new(ConnectionPool::new(state.clone()))),
 			id,
 		}
+	}
+}
+
+impl ClientHandler for Relay {
+	async fn create_message(
+		&self,
+		params: CreateMessageRequestParam,
+		context: RequestContext<RoleClient>,
+	) -> Result<CreateMessageResult, McpError> {
+		todo!()
+	}
+
+	fn get_peer(&self) -> Option<Peer<RoleClient>> {
+		todo!()
+	}
+
+	fn set_peer(&mut self, peer: Peer<RoleClient>) {
+		todo!()
+	}
+
+	fn get_info(&self) -> ClientInfo {
+		todo!()
 	}
 }
 
@@ -335,10 +354,8 @@ impl ConnectionPool {
 		let transport: UpstreamTarget = match &target.spec {
 			TargetSpec::Sse { host, port } => {
 				tracing::trace!("starting sse transport for target: {}", target.name);
-				let transport: SseTransport = SseTransport::start(
-					format!("http://{}:{}", host, port).as_str(),
-				)
-				.await?;
+				let transport: SseTransport =
+					SseTransport::start(format!("http://{}:{}", host, port).as_str()).await?;
 				UpstreamTarget::MCP(serve_client((), transport).await?)
 			},
 			TargetSpec::Stdio { cmd, args } => {
