@@ -3,13 +3,14 @@ FROM rust:1.85.0-slim-bullseye AS builder
 ARG TARGETARCH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    protobuf-compiler \
+    protobuf-compiler libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto ./proto
 COPY src ./src
+COPY common ./common
 
 RUN cargo build --release
 

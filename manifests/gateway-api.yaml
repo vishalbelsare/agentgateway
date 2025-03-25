@@ -107,4 +107,22 @@ data:
         "port": 8080
       }
     }
-
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: MCPAuthPolicy
+metadata:
+  name: mcp-gateway-auth
+spec:
+  targetRefs:
+  - name: mcp-gateway
+    group: gateway.networking.k8s.io
+    kind: Gateway
+  rules:
+    - matches:
+      - type: JWT
+        jwt:
+          claim: foo
+          value: bar
+      resource:
+        kind: tool
+        name: foo-1
