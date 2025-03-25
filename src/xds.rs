@@ -263,10 +263,14 @@ pub struct JwtConfig {
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(tag = "type")]
 pub enum JwksSource {
-	// #[serde(rename = "remote")]
-	// Remote(JwksRemoteSource),
+	#[serde(rename = "remote")]
+	Remote{
+		url: String,
+	},
 	#[serde(rename = "local")]
-	Local(JwksLocalSource),
+	Local{
+    source: JwksLocalSource,
+  },
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -275,10 +279,10 @@ pub struct JwksRemoteSource {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(tag = "type")]
+#[serde(tag = "type", content = "data")]
 pub enum JwksLocalSource {
 	#[serde(rename = "file")]
-	File(std::path::PathBuf),
+	File(String),
 	#[serde(rename = "inline")]
 	Inline(String),
 }
