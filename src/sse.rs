@@ -75,7 +75,7 @@ impl OptionalFromRequestParts<App> for rbac::Claims {
 					let TypedHeader(Authorization(bearer)) = parts
 						.extract::<TypedHeader<Authorization<Bearer>>>()
 						.await
-						.map_err(|e| AuthError::NoAuthHeaderPresent(e))?;
+						.map_err(AuthError::NoAuthHeaderPresent)?;
 					tracing::info!("bearer: {}", bearer.token());
 					let jwk: Jwk = match jwt.jwks {
 						xds::JwksSource::Local { source } => {
@@ -84,26 +84,23 @@ impl OptionalFromRequestParts<App> for rbac::Claims {
 								xds::JwksLocalSource::Inline(jwk) => {
 									tracing::info!("inline jwk");
 									let jwk: Jwk =
-										serde_json::from_str(&jwk).map_err(|e| AuthError::JwksParseError(e))?;
+										serde_json::from_str(&jwk).map_err(AuthError::JwksParseError)?;
 									jwk
 								},
 								xds::JwksLocalSource::File(path) => {
 									tracing::info!("file jwks");
-									let file = std::fs::File::open(path).map_err(|e| AuthError::JwksFileError(e))?;
+									let file = std::fs::File::open(path).map_err(AuthError::JwksFileError)?;
 									tracing::info!("file opened");
 									let jwk: Jwk =
-										serde_json::from_reader(file).map_err(|e| AuthError::JwksParseError(e))?;
+										serde_json::from_reader(file).map_err(AuthError::JwksParseError)?;
 									tracing::info!("file jwk parsed");
 									jwk
 								},
 							}
 						},
-						xds::JwksSource::Remote { url } => {
-							panic!("remote jwks not supported");
-						},
 					};
 
-					let header = decode_header(bearer.token()).map_err(|e| AuthError::InvalidToken(e))?;
+					let header = decode_header(bearer.token()).map_err(AuthError::InvalidToken)?;
 					tracing::info!("header: {:?}", header);
 					if !jwk.is_supported() {
 						tracing::error!("unsupported algorithm");
@@ -133,9 +130,9 @@ impl OptionalFromRequestParts<App> for rbac::Claims {
 						validation
 					};
 
-					let decoding_key = DecodingKey::from_jwk(&jwk).map_err(|e| AuthError::InvalidJWK(e))?;
+					let decoding_key = DecodingKey::from_jwk(&jwk).map_err(AuthError::InvalidJWK)?;
 					let token_data = decode::<Map<String, Value>>(bearer.token(), &decoding_key, &validation)
-						.map_err(|e| AuthError::InvalidToken(e))?;
+						.map_err(AuthError::InvalidToken)?;
 					tracing::info!("token data: {:?}", token_data);
 					Ok(Some(rbac::Claims::new(token_data.claims)))
 				},
@@ -225,10 +222,7 @@ async fn sse_handler(
 	tracing::info!(%session, ?connection, "sse connection");
 	let claims = rbac::Identity::new(
 		claims.map(|c| c.0),
-		match connection.identity {
-			Some(identity) => Some(identity),
-			None => None,
-		},
+		connection.identity.map(|i| i.to_string()),
 	);
 	use tokio_stream::wrappers::ReceiverStream;
 	use tokio_util::sync::PollSender;

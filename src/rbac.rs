@@ -3,6 +3,7 @@ use crate::xds::mcp::kgateway_dev::rbac::{Config as XdsRuleSet, Rule as XdsRule}
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::map::Map;
+use itertools::{self, Itertools};
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -30,7 +31,7 @@ impl RuleSet {
 		}
 
 		self.rules.iter().any(|rule| {
-			rule.resource.matches(&resource) && claims.matches(&rule.key, &rule.value, &rule.matcher)
+			rule.resource.matches(resource) && claims.matches(&rule.key, &rule.value, &rule.matcher)
 		})
 	}
 }
@@ -40,7 +41,7 @@ impl From<&XdsRuleSet> for RuleSet {
 		Self {
 			name: value.name.clone(),
 			namespace: value.namespace.clone(),
-			rules: value.rules.iter().map(|rule| Rule::from(rule)).collect(),
+			rules: value.rules.iter().map_into().collect(),
 		}
 	}
 }

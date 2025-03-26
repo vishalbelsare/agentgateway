@@ -7,7 +7,6 @@ use std::{fmt, mem};
 use prost::{DecodeError, EncodeError};
 use prost_types::value::Kind;
 use prost_types::{Struct, Value};
-use serde_json;
 use split_iter::Splittable;
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -198,9 +197,6 @@ pub struct Config {
 	handlers: HashMap<Strng, Box<dyn RawHandler>>,
 	initial_requests: Vec<DeltaDiscoveryRequest>,
 	on_demand: bool,
-
-	/// alt_hostname provides an alternative accepted SAN for the control plane TLS verification
-	alt_hostname: Option<String>,
 }
 
 pub struct State {
@@ -243,7 +239,6 @@ impl Config {
 			initial_requests: Vec::new(),
 			on_demand: false,
 			metadata: config.metadata.clone(),
-			alt_hostname: config.alt_xds_hostname.clone(),
 		}
 	}
 
@@ -285,35 +280,6 @@ impl Config {
 		Struct { fields }
 	}
 
-	fn json_to_struct(json: serde_json::Map<String, serde_json::Value>) -> prost_types::Struct {
-		prost_types::Struct {
-			fields: json
-				.into_iter()
-				.map(|(k, v)| (k, Self::json_to_value(v)))
-				.collect(),
-		}
-	}
-
-	fn json_to_value(json: serde_json::Value) -> prost_types::Value {
-		use prost_types::value::Kind::*;
-		use serde_json::Value::*;
-
-		prost_types::Value {
-			kind: Some(match json {
-				Null => NullValue(0),
-				Bool(v) => BoolValue(v),
-				Number(n) => NumberValue(n.as_f64().unwrap_or_else(|| {
-					error!("error parsing JSON number: {}", n);
-					0f64
-				})),
-				String(s) => StringValue(s),
-				Array(v) => ListValue(prost_types::ListValue {
-					values: v.into_iter().map(Self::json_to_value).collect(),
-				}),
-				Object(v) => StructValue(Self::json_to_struct(v)),
-			}),
-		}
-	}
 	fn node(&self) -> Node {
 		let ip = std::env::var(INSTANCE_IP);
 		let ip = ip.as_deref().unwrap_or(DEFAULT_IP);
@@ -331,13 +297,16 @@ impl Config {
 			name = gw_name
 		);
 
-		let metadata = Self::build_struct([
+		let mut metadata = Self::build_struct([
 			(NAME, pod_name),
 			(NAMESPACE, ns),
 			(INSTANCE_IPS, ip),
 			(NODE_NAME, node_name),
 			(ROLE, &role),
 		]);
+		metadata
+			.fields
+			.append(&mut Self::build_struct(self.metadata.clone()).fields);
 
 		Node {
 			id: format!("mcpgw~{ip}~{pod_name}.{ns}~{ns}.svc.cluster.local"),

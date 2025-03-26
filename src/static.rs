@@ -8,7 +8,6 @@ use crate::rbac;
 use crate::relay::Relay;
 use crate::sse::App as SseApp;
 use crate::xds::{Listener, ListenerMode, Target, XdsStore as ProxyState};
-use tokio::sync::RwLock;
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -75,7 +74,7 @@ pub async fn serve_static_listener(
 			relay
 				.waiting()
 				.await
-				.map_err(|e| ServingError::StdIo(e))
+				.map_err(ServingError::StdIo)
 				.map(|_| ())
 				.inspect_err(|e| {
 					tracing::error!("serving error: {:?}", e);
@@ -103,14 +102,10 @@ pub async fn serve_static_listener(
 			info!("serving sse on {}:{}", host, port);
 			axum::serve(listener, svc)
 				.await
-				.map_err(|e| ServingError::Sse(e))
+				.map_err(ServingError::Sse)
 				.inspect_err(|e| {
 					tracing::error!("serving error: {:?}", e);
 				})
 		},
 	}
-}
-
-struct State {
-	xds_state: Arc<RwLock<ProxyState>>,
 }

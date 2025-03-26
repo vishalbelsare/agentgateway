@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 use tracing::Level;
 
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, instrument, trace, warn};
+use tracing::{error, instrument, warn};
 
 pub use client::*;
 pub use metrics::*;
@@ -249,8 +249,8 @@ pub struct JwtConfig {
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(tag = "type")]
 pub enum JwksSource {
-	#[serde(rename = "remote")]
-	Remote { url: String },
+	// #[serde(rename = "remote")]
+	// Remote { url: String },
 	#[serde(rename = "local")]
 	Local { source: JwksLocalSource },
 }
@@ -284,6 +284,13 @@ impl Default for Listener {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TargetStore {
 	by_name: HashMap<String, Target>,
+}
+
+
+impl Default for TargetStore {
+  fn default() -> Self {
+    Self::new()
+  }
 }
 
 impl TargetStore {
@@ -331,6 +338,12 @@ impl PolicyStore {
 	}
 }
 
+impl Default for PolicyStore {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl PolicyStore {
 	pub fn insert(&mut self, policy: rbac::RuleSet) {
 		self.by_name.insert(policy.to_key(), policy);
@@ -344,7 +357,6 @@ impl PolicyStore {
 		self
 			.by_name
 			.values()
-			.into_iter()
 			.any(|policy| policy.validate(resource, claims))
 	}
 

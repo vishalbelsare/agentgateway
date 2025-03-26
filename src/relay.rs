@@ -5,7 +5,7 @@ use rmcp::serve_client;
 use rmcp::service::RunningService;
 use rmcp::transport::child_process::TokioChildProcess;
 use rmcp::transport::sse::SseTransport;
-use rmcp::{ClientHandler, Peer, RoleClient};
+use rmcp::RoleClient;
 use rmcp::{
 	Error as McpError, RoleServer, ServerHandler, model::CallToolRequestParam, model::Tool, model::*,
 	service::RequestContext,
@@ -31,28 +31,6 @@ impl Relay {
 			pool: Arc::new(RwLock::new(ConnectionPool::new(state.clone()))),
 			id,
 		}
-	}
-}
-
-impl ClientHandler for Relay {
-	async fn create_message(
-		&self,
-		params: CreateMessageRequestParam,
-		context: RequestContext<RoleClient>,
-	) -> Result<CreateMessageResult, McpError> {
-		todo!()
-	}
-
-	fn get_peer(&self) -> Option<Peer<RoleClient>> {
-		todo!()
-	}
-
-	fn set_peer(&mut self, peer: Peer<RoleClient>) {
-		todo!()
-	}
-
-	fn get_info(&self) -> ClientInfo {
-		todo!()
 	}
 }
 
@@ -286,21 +264,21 @@ impl ServerHandler for Relay {
 }
 
 #[derive(Clone)]
-pub struct ConnectionPool {
+struct ConnectionPool {
 	state: Arc<std::sync::RwLock<XdsStore>>,
 
 	by_name: Arc<RwLock<HashMap<String, Arc<RwLock<UpstreamTarget>>>>>,
 }
 
 impl ConnectionPool {
-	pub fn new(state: Arc<std::sync::RwLock<XdsStore>>) -> Self {
+	fn new(state: Arc<std::sync::RwLock<XdsStore>>) -> Self {
 		Self {
 			state,
 			by_name: Arc::new(RwLock::new(HashMap::new())),
 		}
 	}
 
-	pub async fn get(&self, name: &str) -> Option<Arc<RwLock<UpstreamTarget>>> {
+	async fn get(&self, name: &str) -> Option<Arc<RwLock<UpstreamTarget>>> {
 		tracing::trace!("getting connection for target: {}", name);
 		let by_name = self.by_name.read().await;
 		match by_name.get(name) {
@@ -328,7 +306,7 @@ impl ConnectionPool {
 		}
 	}
 
-	pub async fn iter(&self) -> impl Iterator<Item = (String, Arc<RwLock<UpstreamTarget>>)> {
+	async fn iter(&self) -> impl Iterator<Item = (String, Arc<RwLock<UpstreamTarget>>)> {
 		// Iterate through all state targets, and get the connection from the pool
 		// If the connection is not in the pool, connect to it and add it to the pool
 		let targets: Vec<(String, Target)> = {
@@ -339,7 +317,7 @@ impl ConnectionPool {
 				.map(|(name, target)| (name.clone(), target.clone()))
 				.collect()
 		};
-		let x = targets.iter().map(|(name, target)| async move {
+		let x = targets.iter().map(|(name, _target)| async move {
 			let connection = self.get(name).await.unwrap();
 			(name.clone(), connection)
 		});
@@ -355,11 +333,11 @@ impl ConnectionPool {
 				tracing::trace!("starting sse transport for target: {}", target.name);
 				let transport: SseTransport =
 					SseTransport::start(format!("http://{}:{}", host, port).as_str()).await?;
-				UpstreamTarget::MCP(serve_client((), transport).await?)
+				UpstreamTarget::Mcp(serve_client((), transport).await?)
 			},
 			TargetSpec::Stdio { cmd, args } => {
 				tracing::trace!("starting stdio transport for target: {}", target.name);
-				UpstreamTarget::MCP(
+				UpstreamTarget::Mcp(
 					serve_client(
 						(),
 						TokioChildProcess::new(Command::new(cmd).args(args)).unwrap(),
@@ -389,7 +367,7 @@ impl ConnectionPool {
 /// UpstreamTarget defines a source for MCP information.
 #[derive(Debug)]
 enum UpstreamTarget {
-	MCP(RunningService<RoleClient, ()>),
+	Mcp(RunningService<RoleClient, ()>),
 	OpenAPI(OpenAPIHandler),
 }
 
@@ -399,7 +377,7 @@ impl UpstreamTarget {
 		request: PaginatedRequestParam,
 	) -> Result<ListToolsResult, anyhow::Error> {
 		match self {
-			UpstreamTarget::MCP(m) => Ok(m.list_tools(request).await?),
+			UpstreamTarget::Mcp(m) => Ok(m.list_tools(request).await?),
 			UpstreamTarget::OpenAPI(m) => Ok(ListToolsResult {
 				next_cursor: None,
 				tools: m.tools(),
@@ -412,7 +390,7 @@ impl UpstreamTarget {
 		request: GetPromptRequestParam,
 	) -> Result<GetPromptResult, anyhow::Error> {
 		match self {
-			UpstreamTarget::MCP(m) => Ok(m.get_prompt(request).await?),
+			UpstreamTarget::Mcp(m) => Ok(m.get_prompt(request).await?),
 			UpstreamTarget::OpenAPI(_) => Ok(GetPromptResult {
 				description: None,
 				messages: vec![],
@@ -425,7 +403,7 @@ impl UpstreamTarget {
 		request: PaginatedRequestParam,
 	) -> Result<ListPromptsResult, anyhow::Error> {
 		match self {
-			UpstreamTarget::MCP(m) => Ok(m.list_prompts(request).await?),
+			UpstreamTarget::Mcp(m) => Ok(m.list_prompts(request).await?),
 			UpstreamTarget::OpenAPI(_) => Ok(ListPromptsResult {
 				next_cursor: None,
 				prompts: vec![],
@@ -438,7 +416,7 @@ impl UpstreamTarget {
 		request: PaginatedRequestParam,
 	) -> Result<ListResourcesResult, anyhow::Error> {
 		match self {
-			UpstreamTarget::MCP(m) => Ok(m.list_resources(request).await?),
+			UpstreamTarget::Mcp(m) => Ok(m.list_resources(request).await?),
 			UpstreamTarget::OpenAPI(_) => Ok(ListResourcesResult {
 				next_cursor: None,
 				resources: vec![],
@@ -451,7 +429,7 @@ impl UpstreamTarget {
 		request: PaginatedRequestParam,
 	) -> Result<ListResourceTemplatesResult, anyhow::Error> {
 		match self {
-			UpstreamTarget::MCP(m) => Ok(m.list_resource_templates(request).await?),
+			UpstreamTarget::Mcp(m) => Ok(m.list_resource_templates(request).await?),
 			UpstreamTarget::OpenAPI(_) => Ok(ListResourceTemplatesResult {
 				next_cursor: None,
 				resource_templates: vec![],
@@ -464,7 +442,7 @@ impl UpstreamTarget {
 		request: ReadResourceRequestParam,
 	) -> Result<ReadResourceResult, anyhow::Error> {
 		match self {
-			UpstreamTarget::MCP(m) => Ok(m.read_resource(request).await?),
+			UpstreamTarget::Mcp(m) => Ok(m.read_resource(request).await?),
 			UpstreamTarget::OpenAPI(_) => Ok(ReadResourceResult { contents: vec![] }),
 		}
 	}
@@ -474,7 +452,7 @@ impl UpstreamTarget {
 		request: CallToolRequestParam,
 	) -> Result<CallToolResult, anyhow::Error> {
 		match self {
-			UpstreamTarget::MCP(m) => Ok(m.call_tool(request).await?),
+			UpstreamTarget::Mcp(m) => Ok(m.call_tool(request).await?),
 			UpstreamTarget::OpenAPI(m) => {
 				let res = m
 					.call_tool(request.name.as_ref(), request.arguments)
@@ -506,7 +484,7 @@ impl OpenAPIHandler {
 		let (_, info) = self
 			.info()
 			.into_iter()
-			.find(|(t, info)| t.name == name)
+			.find(|(t, _info)| t.name == name)
 			.ok_or_else(|| anyhow::anyhow!("tool {} not found", name))?;
 		let body = self
 			.client
@@ -528,7 +506,7 @@ impl OpenAPIHandler {
 			.schema
 			.paths
 			.iter()
-			.map(|(path, path_info)| {
+			.flat_map(|(path, path_info)| {
 				let item = path_info.as_item().unwrap();
 				item
 					.iter()
@@ -589,7 +567,6 @@ impl OpenAPIHandler {
 					})
 					.collect::<Vec<_>>()
 			})
-			.flatten()
 			.collect()
 	}
 }
