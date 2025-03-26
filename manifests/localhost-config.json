@@ -6,7 +6,19 @@
     "listener": {
       "type": "sse",
       "host": "0.0.0.0",
-      "port": 8080
+      "port": 8080,
+      "authn": {
+        "type": "jwt",
+        "issuer": ["me"],
+        "audience": ["me.com"],
+        "jwks": {
+          "type": "local",
+          "source": {
+            "type": "file",
+            "data": "manifests/jwt/pub-key"
+          }
+        }
+      }
     }
   }
 

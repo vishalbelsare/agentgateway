@@ -244,9 +244,9 @@ impl ServerHandler for Relay {
 			return Err(McpError::invalid_request("not allowed", None));
 		}
 		let tool_name = request.name.to_string();
-		let (service_name, tool) = tool_name.split_once(':').unwrap();
+		let (service_name, tool) = tool_name.split_once(':').ok_or(McpError::invalid_request("invalid tool name", None))?;
 		let pool = self.pool.read().await;
-		let service = pool.get(service_name).await.unwrap();
+		let service = pool.get(service_name).await.ok_or(McpError::invalid_request("invalid service name", None))?;
 		let req = CallToolRequestParam {
 			name: Cow::Owned(tool.to_string()),
 			arguments: request.arguments,
