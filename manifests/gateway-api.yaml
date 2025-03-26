@@ -147,4 +147,4 @@ spec:
           value: me
       resource:
         kind: tool
-        name: echo
+        name: default/mcp-everything:echo
