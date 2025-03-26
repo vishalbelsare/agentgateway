@@ -47,8 +47,7 @@ spec:
       containers:
         - name: mcp-gateway
           image: ctlptl-registry:5000/mcp-gateway:latest
-          command:
-            - mcp-gateway
+          args:
             - --file=/config/config.json
           env:
             - name: NODE_NAME
