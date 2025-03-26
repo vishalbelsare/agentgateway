@@ -286,11 +286,10 @@ pub struct TargetStore {
 	by_name: HashMap<String, Target>,
 }
 
-
 impl Default for TargetStore {
-  fn default() -> Self {
-    Self::new()
-  }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl TargetStore {

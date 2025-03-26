@@ -83,8 +83,7 @@ impl OptionalFromRequestParts<App> for rbac::Claims {
 							match source {
 								xds::JwksLocalSource::Inline(jwk) => {
 									tracing::info!("inline jwk");
-									let jwk: Jwk =
-										serde_json::from_str(&jwk).map_err(AuthError::JwksParseError)?;
+									let jwk: Jwk = serde_json::from_str(&jwk).map_err(AuthError::JwksParseError)?;
 									jwk
 								},
 								xds::JwksLocalSource::File(path) => {

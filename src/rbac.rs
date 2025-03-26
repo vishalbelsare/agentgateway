@@ -1,9 +1,9 @@
 use crate::xds::mcp::kgateway_dev::rbac::rule;
 use crate::xds::mcp::kgateway_dev::rbac::{Config as XdsRuleSet, Rule as XdsRule};
+use itertools::{self, Itertools};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::map::Map;
-use itertools::{self, Itertools};
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
