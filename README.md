@@ -1,12 +1,20 @@
-# mcp-gateway
+# mcpproxy
 
-A gateway for the MCP protocol.
+A proxy for the MCP protocol.
 
-## Usage
+## Build
 
 ```bash
-cargo run -- -f /home/eitanyarmush/src/kagent-dev/mcp-relay/sse-config.json
+cargo build
 ```
+
+## Run
+
+```bash
+cargo run -- -f /home/eitanyarmush/src/kagent-dev/mcp-relay/examples/config/static.json
+```
+
+## Test
 
 ```bash
 npx @modelcontextprotocol/inspector

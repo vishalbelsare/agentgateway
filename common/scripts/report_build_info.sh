@@ -17,10 +17,10 @@ GIT_DESCRIBE_TAG=$(git describe --tags --always)
 HUB=${HUB:-"ghcr.io/kagent-dev/mcp-relay"}
 
 # used by common/scripts/gobuild.sh
-echo "istio.io/pkg/version.buildVersion=${VERSION:-$BUILD_GIT_REVISION}"
-echo "istio.io/pkg/version.buildGitRevision=${BUILD_GIT_REVISION}"
-echo "istio.io/pkg/version.buildStatus=${tree_status}"
-echo "istio.io/pkg/version.buildTag=${GIT_DESCRIBE_TAG}"
-echo "istio.io/pkg/version.buildHub=${HUB}"
-echo "istio.io/pkg/version.buildOS=$(uname -s)"
-echo "istio.io/pkg/version.buildArch=$(uname -m)"
+echo "mcpproxy.dev.buildVersion=${VERSION:-$BUILD_GIT_REVISION}"
+echo "mcpproxy.dev.buildGitRevision=${BUILD_GIT_REVISION}"
+echo "mcpproxy.dev.buildStatus=${tree_status}"
+echo "mcpproxy.dev.buildTag=${GIT_DESCRIBE_TAG}"
+echo "mcpproxy.dev.buildHub=${HUB}"
+echo "mcpproxy.dev.buildOS=$(uname -s)"
+echo "mcpproxy.dev.buildArch=$(uname -m)"

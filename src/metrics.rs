@@ -6,9 +6,9 @@ use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry;
 use tracing::error;
 
-/// Creates a metrics sub registry for Istio.
+/// Creates a metrics sub registry for mcpproxy.
 pub fn sub_registry(registry: &mut Registry) -> &mut Registry {
-	registry.sub_registry_with_prefix("mcp-gateway")
+	registry.sub_registry_with_prefix("mcpproxy")
 }
 
 pub struct Deferred<'a, F, T>

@@ -18,13 +18,6 @@ fn main() -> Result<(), anyhow::Error> {
 	let config = {
 		let mut c = prost_build::Config::new();
 		c.disable_comments(Some("."));
-		c.bytes([
-			".istio.workload.Workload",
-			".istio.workload.Service",
-			".istio.workload.GatewayAddress",
-			".istio.workload.Address",
-			".istio.security.Address",
-		]);
 		c
 	};
 	tonic_build::configure()
@@ -51,10 +44,10 @@ fn main() -> Result<(), anyhow::Error> {
 	match Command::new("common/scripts/report_build_info.sh").output() {
 		Ok(output) => {
 			for line in String::from_utf8(output.stdout).unwrap().lines() {
-				// Each line looks like `istio.io/pkg/version.buildGitRevision=abc`
+				// Each line looks like `mcpproxy.dev.buildGitRevision=abc`
 				if let Some((key, value)) = line.split_once('=') {
 					let key = key.split('.').last().unwrap();
-					println!("cargo:rustc-env=MCPGW_BUILD_{key}={value}");
+					println!("cargo:rustc-env=MCPPROXY_BUILD_{key}={value}");
 				} else {
 					println!("cargo:warning=invalid build output {line}");
 				}
@@ -65,10 +58,10 @@ fn main() -> Result<(), anyhow::Error> {
 		},
 	};
 	println!(
-		"cargo:rustc-env=MCPGW_BUILD_RUSTC_VERSION={}",
+		"cargo:rustc-env=MCPPROXY_BUILD_RUSTC_VERSION={}",
 		rustc_version::version().unwrap()
 	);
-	println!("cargo:rustc-env=MCPGW_BUILD_PROFILE_NAME={}", profile_name);
+	println!("cargo:rustc-env=MCPPROXY_BUILD_PROFILE_NAME={}", profile_name);
 
 	// This tells cargo to re-run this build script only when the proto files
 	// we're interested in change or the any of the proto directories were updated.
