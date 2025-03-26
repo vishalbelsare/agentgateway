@@ -96,6 +96,11 @@ impl App {
 
 async fn metrics_handler(State(app): State<App>) -> Result<String, StatusCode> {
 	let mut buffer = String::new();
-	encode(&mut buffer, &app.registry).unwrap();
-	Ok(buffer)
+	match encode(&mut buffer, &app.registry) {
+		Ok(_) => Ok(buffer),
+		Err(e) => {
+			error!("error encoding metrics: {:?}", e);
+			Err(StatusCode::INTERNAL_SERVER_ERROR)
+		},
+	}
 }

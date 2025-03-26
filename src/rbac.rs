@@ -67,7 +67,7 @@ impl From<&XdsRule> for Rule {
 			key: value.key.clone(),
 			value: value.value.clone(),
 			matcher: Matcher::from(&value.matcher.try_into().unwrap()),
-			resource: ResourceType::from(value.resource.as_ref().unwrap()),
+			resource: value.resource.as_ref().unwrap().try_into().unwrap(),
 		}
 	}
 }
@@ -81,19 +81,20 @@ pub enum ResourceType {
 	Resource { id: String },
 }
 
-impl From<&rule::Resource> for ResourceType {
-	fn from(value: &rule::Resource) -> Self {
+impl TryFrom<&rule::Resource> for ResourceType {
+	type Error = anyhow::Error;
+	fn try_from(value: &rule::Resource) -> Result<Self, Self::Error> {
 		match value.r#type.try_into() {
-			Ok(rule::resource::ResourceType::Tool) => ResourceType::Tool {
+			Ok(rule::resource::ResourceType::Tool) => Ok(ResourceType::Tool {
 				id: value.id.clone(),
-			},
-			Ok(rule::resource::ResourceType::Prompt) => ResourceType::Prompt {
+			}),
+			Ok(rule::resource::ResourceType::Prompt) => Ok(ResourceType::Prompt {
 				id: value.id.clone(),
-			},
-			Ok(rule::resource::ResourceType::Resource) => ResourceType::Resource {
+			}),
+			Ok(rule::resource::ResourceType::Resource) => Ok(ResourceType::Resource {
 				id: value.id.clone(),
-			},
-			_ => panic!("Invalid resource type"),
+			}),
+			_ => Err(anyhow::anyhow!("Invalid resource type")),
 		}
 	}
 }

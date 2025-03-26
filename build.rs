@@ -61,7 +61,10 @@ fn main() -> Result<(), anyhow::Error> {
 		"cargo:rustc-env=MCPPROXY_BUILD_RUSTC_VERSION={}",
 		rustc_version::version().unwrap()
 	);
-	println!("cargo:rustc-env=MCPPROXY_BUILD_PROFILE_NAME={}", profile_name);
+	println!(
+		"cargo:rustc-env=MCPPROXY_BUILD_PROFILE_NAME={}",
+		profile_name
+	);
 
 	// This tells cargo to re-run this build script only when the proto files
 	// we're interested in change or the any of the proto directories were updated.

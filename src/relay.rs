@@ -1,6 +1,7 @@
 use crate::rbac;
 use crate::xds::{OpenAPISchema, Target, TargetSpec, XdsStore};
 use http::Method;
+use itertools::Itertools;
 use rmcp::RoleClient;
 use rmcp::serve_client;
 use rmcp::service::RunningService;
@@ -65,23 +66,21 @@ impl ServerHandler for Relay {
 			let svc = svc.clone();
 			let request = request.clone();
 			async move {
-				let result = svc
-					.as_ref()
-					.read()
-					.await
-					.list_resources(request)
-					.await
-					.unwrap();
-				result.resources
+				match svc.as_ref().read().await.list_resources(request).await {
+					Ok(r) => Ok(r.resources),
+					Err(e) => Err(e),
+				}
 			}
 		});
 
+		// TODO: Handle errors
+		let (results, _errors): (Vec<_>, Vec<_>) = futures::future::join_all(all)
+			.await
+			.into_iter()
+			.partition_result();
+
 		Ok(ListResourcesResult {
-			resources: futures::future::join_all(all)
-				.await
-				.into_iter()
-				.flatten()
-				.collect(),
+			resources: results.into_iter().flatten().collect(),
 			next_cursor: None,
 		})
 	}
@@ -101,13 +100,7 @@ impl ServerHandler for Relay {
 		}
 		let pool = self.pool.read().await;
 		let target = pool.get(&request.uri).await.unwrap();
-		let result = target
-			.as_ref()
-			.read()
-			.await
-			.read_resource(request)
-			.await
-			.unwrap();
+		let result = target.as_ref().read().await.read_resource(request).await?;
 
 		Ok(ReadResourceResult {
 			contents: result.contents,
@@ -124,23 +117,26 @@ impl ServerHandler for Relay {
 			let svc = svc.clone();
 			let request = request.clone();
 			async move {
-				let result = svc
+				match svc
 					.as_ref()
 					.read()
 					.await
 					.list_resource_templates(request)
 					.await
-					.unwrap();
-				result.resource_templates
+				{
+					Ok(r) => Ok(r.resource_templates),
+					Err(e) => Err(e),
+				}
 			}
 		});
 
+		let (results, _errors): (Vec<_>, Vec<_>) = futures::future::join_all(all)
+			.await
+			.into_iter()
+			.partition_result();
+
 		Ok(ListResourceTemplatesResult {
-			resource_templates: futures::future::join_all(all)
-				.await
-				.into_iter()
-				.flatten()
-				.collect(),
+			resource_templates: results.into_iter().flatten().collect(),
 			next_cursor: None,
 		})
 	}
@@ -155,23 +151,20 @@ impl ServerHandler for Relay {
 			let svc = svc.clone();
 			let request = request.clone();
 			async move {
-				let result = svc
-					.as_ref()
-					.read()
-					.await
-					.list_prompts(request)
-					.await
-					.unwrap();
-				result.prompts
+				match svc.as_ref().read().await.list_prompts(request).await {
+					Ok(r) => Ok(r.prompts),
+					Err(e) => Err(e),
+				}
 			}
 		});
 
+		let (results, _errors): (Vec<_>, Vec<_>) = futures::future::join_all(all)
+			.await
+			.into_iter()
+			.partition_result();
+
 		Ok(ListPromptsResult {
-			prompts: futures::future::join_all(all)
-				.await
-				.into_iter()
-				.flatten()
-				.collect(),
+			prompts: results.into_iter().flatten().collect(),
 			next_cursor: None,
 		})
 	}
@@ -198,8 +191,10 @@ impl ServerHandler for Relay {
 			arguments: request.arguments,
 		};
 
-		let result = service.as_ref().read().await.get_prompt(req).await.unwrap();
-		Ok(result)
+		match service.as_ref().read().await.get_prompt(req).await {
+			Ok(r) => Ok(r),
+			Err(e) => Err(e.into()),
+		}
 	}
 
 	async fn list_tools(
@@ -207,30 +202,29 @@ impl ServerHandler for Relay {
 		request: PaginatedRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListToolsResult, McpError> {
-		let mut tools = Vec::new();
 		// TODO: Use iterators
 		// TODO: Handle individual errors
 		// TODO: Do we want to handle pagination here, or just pass it through?
 		tracing::trace!("listing tools");
-		for (name, service) in self.pool.read().await.iter().await {
-			let result = service
-				.as_ref()
-				.read()
-				.await
-				.list_tools(request.clone())
-				.await
-				.unwrap();
-			for tool in result.tools {
-				let tool_name = format!("{}:{}", name, tool.name);
-				tools.push(Tool {
-					name: Cow::Owned(tool_name),
-					description: tool.description,
-					input_schema: tool.input_schema,
-				});
+		let pool = self.pool.read().await;
+		let all = pool.iter().await.map(|(_name, svc)| {
+			let svc = svc.clone();
+			let request = request.clone();
+			async move {
+				match svc.as_ref().read().await.list_tools(request).await {
+					Ok(r) => Ok(r.tools),
+					Err(e) => Err(e),
+				}
 			}
-		}
+		});
+
+		let (results, _errors): (Vec<_>, Vec<_>) = futures::future::join_all(all)
+			.await
+			.into_iter()
+			.partition_result();
+
 		Ok(ListToolsResult {
-			tools,
+			tools: results.into_iter().flatten().collect(),
 			next_cursor: None,
 		})
 	}
@@ -258,8 +252,10 @@ impl ServerHandler for Relay {
 			arguments: request.arguments,
 		};
 
-		let result = service.as_ref().read().await.call_tool(req).await.unwrap();
-		Ok(result)
+		match service.as_ref().read().await.call_tool(req).await {
+			Ok(r) => Ok(r),
+			Err(e) => Err(e.into()),
+		}
 	}
 }
 
@@ -371,11 +367,51 @@ enum UpstreamTarget {
 	OpenAPI(OpenAPIHandler),
 }
 
+enum UpstreamError {
+	ServiceError(rmcp::ServiceError),
+	OpenAPIError(anyhow::Error),
+}
+
+impl From<rmcp::ServiceError> for UpstreamError {
+	fn from(value: rmcp::ServiceError) -> Self {
+		UpstreamError::ServiceError(value)
+	}
+}
+
+impl From<anyhow::Error> for UpstreamError {
+	fn from(value: anyhow::Error) -> Self {
+		UpstreamError::OpenAPIError(value)
+	}
+}
+
+impl From<UpstreamError> for ErrorData {
+	fn from(value: UpstreamError) -> Self {
+		match value {
+			UpstreamError::OpenAPIError(e) => ErrorData::internal_error(e.to_string(), None),
+			UpstreamError::ServiceError(e) => match e {
+				rmcp::ServiceError::McpError(e) => e,
+				rmcp::ServiceError::Timeout { timeout } => {
+					ErrorData::internal_error(format!("request timed out after {:?}", timeout), None)
+				},
+				rmcp::ServiceError::Cancelled { reason } => match reason {
+					Some(reason) => ErrorData::internal_error(reason.clone(), None),
+					None => ErrorData::internal_error("unknown reason", None),
+				},
+				rmcp::ServiceError::UnexpectedResponse => {
+					ErrorData::internal_error("unexpected response", None)
+				},
+				rmcp::ServiceError::Transport(e) => ErrorData::internal_error(e.to_string(), None),
+				_ => ErrorData::internal_error("unknown error", None),
+			},
+		}
+	}
+}
+
 impl UpstreamTarget {
 	async fn list_tools(
 		&self,
 		request: PaginatedRequestParam,
-	) -> Result<ListToolsResult, anyhow::Error> {
+	) -> Result<ListToolsResult, UpstreamError> {
 		match self {
 			UpstreamTarget::Mcp(m) => Ok(m.list_tools(request).await?),
 			UpstreamTarget::OpenAPI(m) => Ok(ListToolsResult {
@@ -388,7 +424,7 @@ impl UpstreamTarget {
 	async fn get_prompt(
 		&self,
 		request: GetPromptRequestParam,
-	) -> Result<GetPromptResult, anyhow::Error> {
+	) -> Result<GetPromptResult, UpstreamError> {
 		match self {
 			UpstreamTarget::Mcp(m) => Ok(m.get_prompt(request).await?),
 			UpstreamTarget::OpenAPI(_) => Ok(GetPromptResult {
@@ -401,7 +437,7 @@ impl UpstreamTarget {
 	async fn list_prompts(
 		&self,
 		request: PaginatedRequestParam,
-	) -> Result<ListPromptsResult, anyhow::Error> {
+	) -> Result<ListPromptsResult, UpstreamError> {
 		match self {
 			UpstreamTarget::Mcp(m) => Ok(m.list_prompts(request).await?),
 			UpstreamTarget::OpenAPI(_) => Ok(ListPromptsResult {
@@ -414,7 +450,7 @@ impl UpstreamTarget {
 	async fn list_resources(
 		&self,
 		request: PaginatedRequestParam,
-	) -> Result<ListResourcesResult, anyhow::Error> {
+	) -> Result<ListResourcesResult, UpstreamError> {
 		match self {
 			UpstreamTarget::Mcp(m) => Ok(m.list_resources(request).await?),
 			UpstreamTarget::OpenAPI(_) => Ok(ListResourcesResult {
@@ -427,7 +463,7 @@ impl UpstreamTarget {
 	async fn list_resource_templates(
 		&self,
 		request: PaginatedRequestParam,
-	) -> Result<ListResourceTemplatesResult, anyhow::Error> {
+	) -> Result<ListResourceTemplatesResult, UpstreamError> {
 		match self {
 			UpstreamTarget::Mcp(m) => Ok(m.list_resource_templates(request).await?),
 			UpstreamTarget::OpenAPI(_) => Ok(ListResourceTemplatesResult {
@@ -440,7 +476,7 @@ impl UpstreamTarget {
 	async fn read_resource(
 		&self,
 		request: ReadResourceRequestParam,
-	) -> Result<ReadResourceResult, anyhow::Error> {
+	) -> Result<ReadResourceResult, UpstreamError> {
 		match self {
 			UpstreamTarget::Mcp(m) => Ok(m.read_resource(request).await?),
 			UpstreamTarget::OpenAPI(_) => Ok(ReadResourceResult { contents: vec![] }),
@@ -450,7 +486,7 @@ impl UpstreamTarget {
 	async fn call_tool(
 		&self,
 		request: CallToolRequestParam,
-	) -> Result<CallToolResult, anyhow::Error> {
+	) -> Result<CallToolResult, UpstreamError> {
 		match self {
 			UpstreamTarget::Mcp(m) => Ok(m.call_tool(request).await?),
 			UpstreamTarget::OpenAPI(m) => {
