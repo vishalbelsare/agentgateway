@@ -152,7 +152,16 @@ impl ServerHandler for Relay {
 			let request = request.clone();
 			async move {
 				match svc.as_ref().read().await.list_prompts(request).await {
-					Ok(r) => Ok(r.prompts),
+					Ok(r) => Ok(
+						r.prompts
+							.into_iter()
+							.map(|p| Prompt {
+								name: format!("{}:{}", _name, p.name),
+								description: p.description,
+								arguments: p.arguments,
+							})
+							.collect::<Vec<_>>(),
+					),
 					Err(e) => Err(e),
 				}
 			}
@@ -207,12 +216,21 @@ impl ServerHandler for Relay {
 		// TODO: Do we want to handle pagination here, or just pass it through?
 		tracing::trace!("listing tools");
 		let pool = self.pool.read().await;
-		let all = pool.iter().await.map(|(_name, svc)| {
+		let all = pool.iter().await.map(|(name, svc)| {
 			let svc = svc.clone();
 			let request = request.clone();
 			async move {
 				match svc.as_ref().read().await.list_tools(request).await {
-					Ok(r) => Ok(r.tools),
+					Ok(r) => Ok(
+						r.tools
+							.into_iter()
+							.map(|t| Tool {
+								name: Cow::Owned(format!("{}:{}", name, t.name)),
+								description: t.description,
+								input_schema: t.input_schema,
+							})
+							.collect::<Vec<_>>(),
+					),
 					Err(e) => Err(e),
 				}
 			}
@@ -244,9 +262,14 @@ impl ServerHandler for Relay {
 			return Err(McpError::invalid_request("not allowed", None));
 		}
 		let tool_name = request.name.to_string();
-		let (service_name, tool) = tool_name.split_once(':').ok_or(McpError::invalid_request("invalid tool name", None))?;
+		let (service_name, tool) = tool_name
+			.split_once(':')
+			.ok_or(McpError::invalid_request("invalid tool name", None))?;
 		let pool = self.pool.read().await;
-		let service = pool.get(service_name).await.ok_or(McpError::invalid_request("invalid service name", None))?;
+		let service = pool
+			.get(service_name)
+			.await
+			.ok_or(McpError::invalid_request("invalid service name", None))?;
 		let req = CallToolRequestParam {
 			name: Cow::Owned(tool.to_string()),
 			arguments: request.arguments,
