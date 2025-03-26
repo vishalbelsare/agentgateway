@@ -289,8 +289,13 @@ impl ConnectionPool {
 						// We want write access to the by_name map, so we drop the read lock
 						// TODO: Fix this
 						drop(by_name);
-						let connection = self.connect(&target).await.unwrap();
-						Some(connection)
+						match self.connect(&target).await {
+							Ok(connection) => Some(connection),
+							Err(e) => {
+								tracing::error!("Error connecting to target: {}", e);
+								None
+							},
+						}
 					},
 					None => {
 						tracing::error!("Target not found: {}", name);
