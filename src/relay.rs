@@ -328,7 +328,7 @@ impl ConnectionPool {
 			TargetSpec::Sse { host, port } => {
 				tracing::trace!("starting sse transport for target: {}", target.name);
 				let transport: SseTransport =
-					SseTransport::start(format!("http://{}:{}", host, port).as_str()).await?;
+					SseTransport::start(format!("http://{}:{}/sse", host, port).as_str()).await?;
 				UpstreamTarget::Mcp(serve_client((), transport).await?)
 			},
 			TargetSpec::Stdio { cmd, args } => {
