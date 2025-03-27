@@ -29,3 +29,8 @@ lint:
 .PHONY: test
 test:
 	cargo test --all-targets --all-features
+
+# clean
+.PHONY: clean
+clean:
+	cargo clean
