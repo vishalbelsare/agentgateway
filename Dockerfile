@@ -14,13 +14,16 @@ COPY common ./common
 
 RUN cargo build --release
 
-RUN strip target/release/mcp-gateway
+RUN strip target/release/mcp-gw
 
 FROM gcr.io/distroless/cc-debian12 AS runner 
 
 ARG TARGETARCH
 WORKDIR /app
 
-COPY --from=builder /app/target/release/mcp-gateway /app/mcp-gateway
+COPY --from=builder /app/target/release/mcp-gw /app/mcp-gw
 
-ENTRYPOINT ["/app/mcp-gateway"]
+LABEL org.opencontainers.image.source https://github.com/mcp-gw/mcp-gw
+LABEL org.opencontainers.image.description="MCP gw is a proxy for MCP."
+
+ENTRYPOINT ["/app/mcp-gw"]
