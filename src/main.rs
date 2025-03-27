@@ -113,7 +113,7 @@ async fn main() -> Result<()> {
 
 			// Wait for all servers to finish? I think this does what I want :shrug:
 			while let Some(result) = run_set.join_next().await {
-        #[allow(unused_must_use)]
+				#[allow(unused_must_use)]
 				result.unwrap();
 			}
 		},
@@ -168,7 +168,7 @@ async fn main() -> Result<()> {
 
 			// Wait for all servers to finish? I think this does what I want :shrug:
 			while let Some(result) = run_set.join_next().await {
-        #[allow(unused_must_use)]
+				#[allow(unused_must_use)]
 				result.unwrap();
 			}
 		},
