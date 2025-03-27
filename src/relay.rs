@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::process::Command;
 use tokio::sync::RwLock;
+use tracing::instrument;
 
 pub mod metrics;
 
@@ -46,6 +47,7 @@ impl Relay {
 
 // TODO: lists and gets can be macros
 impl ServerHandler for Relay {
+	#[instrument(level = "debug", skip_all)]
 	fn get_info(&self) -> ServerInfo {
 		ServerInfo {
             protocol_version: ProtocolVersion::V_2024_11_05,
@@ -65,6 +67,7 @@ impl ServerHandler for Relay {
         }
 	}
 
+	#[instrument(level = "debug", skip_all)]
 	async fn list_resources(
 		&self,
 		request: PaginatedRequestParam,
@@ -94,28 +97,7 @@ impl ServerHandler for Relay {
 		})
 	}
 
-	async fn read_resource(
-		&self,
-		request: ReadResourceRequestParam,
-		_context: RequestContext<RoleServer>,
-	) -> std::result::Result<ReadResourceResult, McpError> {
-		if !self.state.read().unwrap().policies.validate(
-			&rbac::ResourceType::Resource {
-				id: request.uri.to_string(),
-			},
-			&self.id,
-		) {
-			return Err(McpError::invalid_request("not allowed", None));
-		}
-		let pool = self.pool.read().await;
-		let target = pool.get(&request.uri).await.unwrap();
-		let result = target.as_ref().read().await.read_resource(request).await?;
-
-		Ok(ReadResourceResult {
-			contents: result.contents,
-		})
-	}
-
+	#[instrument(level = "debug", skip_all)]
 	async fn list_resource_templates(
 		&self,
 		request: PaginatedRequestParam,
@@ -144,12 +126,20 @@ impl ServerHandler for Relay {
 			.into_iter()
 			.partition_result();
 
+		self.metrics.clone().record(
+			&metrics::ListCall {
+				resource_type: "resource_template".to_string(),
+			},
+			(),
+		);
+
 		Ok(ListResourceTemplatesResult {
 			resource_templates: results.into_iter().flatten().collect(),
 			next_cursor: None,
 		})
 	}
 
+	#[instrument(level = "debug", skip_all)]
 	async fn list_prompts(
 		&self,
 		request: PaginatedRequestParam,
@@ -181,12 +171,66 @@ impl ServerHandler for Relay {
 			.into_iter()
 			.partition_result();
 
+		self.metrics.clone().record(
+			&metrics::ListCall {
+				resource_type: "prompt".to_string(),
+			},
+			(),
+		);
 		Ok(ListPromptsResult {
 			prompts: results.into_iter().flatten().collect(),
 			next_cursor: None,
 		})
 	}
 
+	#[instrument(
+    level = "debug",
+    skip_all,
+    fields(
+        name=%request.uri,
+    ),
+  )]
+	async fn read_resource(
+		&self,
+		request: ReadResourceRequestParam,
+		_context: RequestContext<RoleServer>,
+	) -> std::result::Result<ReadResourceResult, McpError> {
+		if !self.state.read().unwrap().policies.validate(
+			&rbac::ResourceType::Resource {
+				id: request.uri.to_string(),
+			},
+			&self.id,
+		) {
+			return Err(McpError::invalid_request("not allowed", None));
+		}
+		let uri = request.uri.to_string();
+		let (service_name, resource) = uri.split_once(':').unwrap();
+		let pool = self.pool.read().await;
+		let service = pool.get(service_name).await.unwrap();
+		let req = ReadResourceRequestParam {
+			uri: resource.to_string(),
+		};
+
+		self.metrics.clone().record(
+			&metrics::GetResourceCall {
+				server: service_name.to_string(),
+				uri: resource.to_string(),
+			},
+			(),
+		);
+		match service.as_ref().read().await.read_resource(req).await {
+			Ok(r) => Ok(r),
+			Err(e) => Err(e.into()),
+		}
+	}
+
+	#[instrument(
+    level = "debug",
+    skip_all,
+    fields(
+        name=%request.name,
+    ),
+  )]
 	async fn get_prompt(
 		&self,
 		request: GetPromptRequestParam,
@@ -200,21 +244,29 @@ impl ServerHandler for Relay {
 		) {
 			return Err(McpError::invalid_request("not allowed", None));
 		}
-		let tool_name = request.name.to_string();
-		let (service_name, tool) = tool_name.split_once(':').unwrap();
+		let prompt_name = request.name.to_string();
+		let (service_name, prompt) = prompt_name.split_once(':').unwrap();
 		let pool = self.pool.read().await;
 		let service = pool.get(service_name).await.unwrap();
 		let req = GetPromptRequestParam {
-			name: tool.to_string(),
+			name: prompt.to_string(),
 			arguments: request.arguments,
 		};
 
+		self.metrics.clone().record(
+			&metrics::GetPromptCall {
+				server: service_name.to_string(),
+				name: prompt.to_string(),
+			},
+			(),
+		);
 		match service.as_ref().read().await.get_prompt(req).await {
 			Ok(r) => Ok(r),
 			Err(e) => Err(e.into()),
 		}
 	}
 
+	#[instrument(level = "debug", skip_all)]
 	async fn list_tools(
 		&self,
 		request: PaginatedRequestParam,
@@ -223,7 +275,6 @@ impl ServerHandler for Relay {
 		// TODO: Use iterators
 		// TODO: Handle individual errors
 		// TODO: Do we want to handle pagination here, or just pass it through?
-		tracing::trace!("listing tools");
 		let pool = self.pool.read().await;
 		let all = pool.iter().await.map(|(name, svc)| {
 			let svc = svc.clone();
@@ -250,12 +301,26 @@ impl ServerHandler for Relay {
 			.into_iter()
 			.partition_result();
 
+		self.metrics.clone().record(
+			&metrics::ListCall {
+				resource_type: "tool".to_string(),
+			},
+			(),
+		);
+
 		Ok(ListToolsResult {
 			tools: results.into_iter().flatten().collect(),
 			next_cursor: None,
 		})
 	}
 
+	#[instrument(
+    level = "debug",
+    skip_all,
+    fields(
+        name=%request.name,
+    ),
+  )]
 	async fn call_tool(
 		&self,
 		request: CallToolRequestParam,
@@ -377,6 +442,13 @@ impl ConnectionPool {
 		x.into_iter()
 	}
 
+	#[instrument(
+    level = "debug",
+    skip_all,
+    fields(
+        name=%target.name,
+    ),
+  )]
 	async fn connect(&self, target: &Target) -> Result<Arc<RwLock<UpstreamTarget>>, anyhow::Error> {
 		tracing::trace!("connecting to target: {}", target.name);
 		let transport: UpstreamTarget = match &target.spec {
@@ -440,7 +512,7 @@ impl UpstreamError {
 				rmcp::ServiceError::Transport(_) => "transport_error".to_string(),
 				_ => "unknown".to_string(),
 			},
-			Self::OpenAPIError(e) => e.to_string(),
+			Self::OpenAPIError(_) => "openapi_error".to_string(),
 		}
 	}
 }
@@ -588,6 +660,13 @@ struct UpstreamOpenAPICall {
 }
 
 impl OpenAPIHandler {
+	#[instrument(
+    level = "debug",
+    skip_all,
+    fields(
+        name=%name,
+    ),
+  )]
 	async fn call_tool(&self, name: &str, args: Option<JsonObject>) -> Result<String, anyhow::Error> {
 		let (_, info) = self
 			.info()
