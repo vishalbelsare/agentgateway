@@ -1,5 +1,5 @@
 [package]
-name = "mcp-gateway"
+name = "mcp-gw"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
@@ -59,6 +59,6 @@ path = "src/lib.rs"
 bench = false
 
 [[bin]]
-name = "mcp-gateway"
+name = "mcp-gw"
 path = "src/main.rs"
 bench = false
