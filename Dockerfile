@@ -23,7 +23,7 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/mcp-gw /app/mcp-gw
 
-LABEL org.opencontainers.image.source https://github.com/mcp-gw/mcp-gw
+LABEL org.opencontainers.image.source=https://github.com/mcp-gw/mcp-gw
 LABEL org.opencontainers.image.description="MCP gw is a proxy for MCP."
 
 ENTRYPOINT ["/app/mcp-gw"]
