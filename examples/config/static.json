@@ -20,7 +20,7 @@
   "policies": [
     {
       "key": "sub",
-      "value": "1234567890",
+      "value": "me",
       "resource": {
         "type": "tool",
         "id": "*"

@@ -1,4 +1,5 @@
 use crate::relay::Relay;
+use crate::relay;
 use crate::xds;
 use crate::xds::XdsStore as AppState;
 use crate::{proxyprotocol, rbac};
@@ -41,13 +42,15 @@ pub struct App {
 	state: Arc<std::sync::RwLock<AppState>>,
 	txs:
 		Arc<tokio::sync::RwLock<HashMap<SessionId, tokio::sync::mpsc::Sender<ClientJsonRpcMessage>>>>,
+	metrics: Arc<relay::metrics::Metrics>,
 }
 
 impl App {
-	pub fn new(state: Arc<std::sync::RwLock<AppState>>) -> Self {
+	pub fn new(state: Arc<std::sync::RwLock<AppState>>, metrics: Arc<relay::metrics::Metrics>) -> Self {
 		Self {
 			state,
 			txs: Default::default(),
+			metrics,
 		}
 	}
 	pub fn router(&self) -> Router {
@@ -210,6 +213,9 @@ async fn post_event_handler(
 	Ok(StatusCode::ACCEPTED)
 }
 
+//get <-
+//-> post 
+
 async fn sse_handler(
 	State(app): State<App>,
 	ConnectInfo(connection): ConnectInfo<proxyprotocol::Address>,
@@ -237,7 +243,7 @@ async fn sse_handler(
 		tokio::spawn(async move {
 			let stream = ReceiverStream::new(from_client_rx);
 			let sink = PollSender::new(to_client_tx).sink_map_err(std::io::Error::other);
-			let result = serve_server(Relay::new(app.state.clone(), claims), (sink, stream))
+			let result = serve_server(Relay::new(app.state.clone(), claims, app.metrics.clone()), (sink, stream))
 				.await
 				.inspect_err(|e| {
 					tracing::error!("serving error: {:?}", e);
