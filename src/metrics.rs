@@ -6,9 +6,9 @@ use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry;
 use tracing::error;
 
-/// Creates a metrics sub registry for mcpproxy.
+/// Creates a metrics sub registry for mcp-gw.
 pub fn sub_registry(registry: &mut Registry) -> &mut Registry {
-	registry.sub_registry_with_prefix("mcpproxy")
+	registry.sub_registry_with_prefix("mcp-gw")
 }
 
 pub struct Deferred<'a, F, T>

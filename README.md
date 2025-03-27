@@ -1,4 +1,4 @@
-# mcpproxy
+# mcp-gw
 
 A proxy for the MCP protocol.
 
