@@ -57,7 +57,7 @@ jobs:
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: myapp-${{ matrix.os }}
+        name: mcp-gw-${{ matrix.os }}
         path: target/release/mcp-gw
   release:
     needs:
@@ -69,12 +69,14 @@ jobs:
     steps:
     - name: Download Artifacts
       uses: actions/download-artifact@v4
+    - name: Display structure of downloaded files
+      run: ls -R
     - name: Checkout
       uses: actions/checkout@v4
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        files: myapp-*/myapp-*
+        files: mcp-gw-*/mcp-gw-*
         tag_name: ${{ github.ref_name }}
         body: "Automated release of ${{ github.ref_name }}."
       env:
