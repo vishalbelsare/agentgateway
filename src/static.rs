@@ -5,10 +5,10 @@ use rmcp::serve_server;
 
 use crate::proxyprotocol;
 use crate::rbac;
+use crate::relay;
 use crate::relay::Relay;
 use crate::sse::App as SseApp;
 use crate::xds::{Listener, ListenerMode, Target, XdsStore as ProxyState};
-use crate::relay;
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

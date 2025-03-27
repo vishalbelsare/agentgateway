@@ -1,5 +1,5 @@
-use crate::relay::Relay;
 use crate::relay;
+use crate::relay::Relay;
 use crate::xds;
 use crate::xds::XdsStore as AppState;
 use crate::{proxyprotocol, rbac};
@@ -46,7 +46,10 @@ pub struct App {
 }
 
 impl App {
-	pub fn new(state: Arc<std::sync::RwLock<AppState>>, metrics: Arc<relay::metrics::Metrics>) -> Self {
+	pub fn new(
+		state: Arc<std::sync::RwLock<AppState>>,
+		metrics: Arc<relay::metrics::Metrics>,
+	) -> Self {
 		Self {
 			state,
 			txs: Default::default(),
@@ -214,7 +217,7 @@ async fn post_event_handler(
 }
 
 //get <-
-//-> post 
+//-> post
 
 async fn sse_handler(
 	State(app): State<App>,
@@ -243,11 +246,14 @@ async fn sse_handler(
 		tokio::spawn(async move {
 			let stream = ReceiverStream::new(from_client_rx);
 			let sink = PollSender::new(to_client_tx).sink_map_err(std::io::Error::other);
-			let result = serve_server(Relay::new(app.state.clone(), claims, app.metrics.clone()), (sink, stream))
-				.await
-				.inspect_err(|e| {
-					tracing::error!("serving error: {:?}", e);
-				});
+			let result = serve_server(
+				Relay::new(app.state.clone(), claims, app.metrics.clone()),
+				(sink, stream),
+			)
+			.await
+			.inspect_err(|e| {
+				tracing::error!("serving error: {:?}", e);
+			});
 
 			if let Err(e) = result {
 				tracing::error!(error = ?e, "initialize error");

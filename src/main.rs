@@ -10,12 +10,12 @@ use tracing_subscriber::{self, EnvFilter};
 
 use mcp_gw::admin::App as AdminApp;
 use mcp_gw::metrics::App as MetricsApp;
+use mcp_gw::relay;
 use mcp_gw::xds;
 use mcp_gw::xds::ProxyStateUpdater;
 use mcp_gw::xds::XdsStore as ProxyState;
 use mcp_gw::xds::types::mcp::kgateway_dev::rbac::Config as XdsRbac;
 use mcp_gw::xds::types::mcp::kgateway_dev::target::Target as XdsTarget;
-use mcp_gw::relay;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -52,7 +52,6 @@ async fn main() -> Result<()> {
 
 	let args = Args::parse();
 
-
 	let cfg: Config = match (args.file, args.config) {
 		(Some(filename), None) => {
 			let file = tokio::fs::read_to_string(filename).await?;
@@ -79,7 +78,7 @@ async fn main() -> Result<()> {
 			let cfg_clone = cfg.clone();
 			let state = Arc::new(RwLock::new(ProxyState::new(cfg_clone.listener.clone())));
 
-      let relay_metrics = relay::metrics::Metrics::new(&mut registry);
+			let relay_metrics = relay::metrics::Metrics::new(&mut registry);
 
 			let state_2 = state.clone();
 			let cfg_clone = cfg.clone();
@@ -149,7 +148,7 @@ async fn main() -> Result<()> {
 					.map_err(|e| anyhow::anyhow!("error serving admin: {:?}", e))
 			});
 
-      let relay_metrics = relay::metrics::Metrics::new(&mut registry);
+			let relay_metrics = relay::metrics::Metrics::new(&mut registry);
 			run_set.spawn(async move {
 				serve_static_listener(cfg.listener, state.clone(), Arc::new(relay_metrics))
 					.await
