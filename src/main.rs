@@ -10,6 +10,7 @@ use tracing_subscriber::{self, EnvFilter};
 
 use mcp_gw::admin::App as AdminApp;
 use mcp_gw::metrics::App as MetricsApp;
+use mcp_gw::relay;
 use mcp_gw::xds;
 use mcp_gw::xds::ProxyStateUpdater;
 use mcp_gw::xds::XdsStore as ProxyState;
@@ -51,11 +52,6 @@ async fn main() -> Result<()> {
 
 	let args = Args::parse();
 
-	// if args.file.is_none() && args.config.is_none() {
-	//   eprintln!("Error: either --file or --config must be provided, exiting");
-	//   std::process::exit(1);
-	// }
-
 	let cfg: Config = match (args.file, args.config) {
 		(Some(filename), None) => {
 			let file = tokio::fs::read_to_string(filename).await?;
@@ -82,10 +78,12 @@ async fn main() -> Result<()> {
 			let cfg_clone = cfg.clone();
 			let state = Arc::new(RwLock::new(ProxyState::new(cfg_clone.listener.clone())));
 
+			let relay_metrics = relay::metrics::Metrics::new(&mut registry);
+
 			let state_2 = state.clone();
 			let cfg_clone = cfg.clone();
 			run_set.spawn(async move {
-				run_local_client(&cfg_clone, state_2)
+				run_local_client(&cfg_clone, state_2, Arc::new(relay_metrics))
 					.await
 					.map_err(|e| anyhow::anyhow!("error running local client: {:?}", e))
 			});
@@ -150,8 +148,9 @@ async fn main() -> Result<()> {
 					.map_err(|e| anyhow::anyhow!("error serving admin: {:?}", e))
 			});
 
+			let relay_metrics = relay::metrics::Metrics::new(&mut registry);
 			run_set.spawn(async move {
-				serve_static_listener(cfg.listener, state.clone())
+				serve_static_listener(cfg.listener, state.clone(), Arc::new(relay_metrics))
 					.await
 					.map_err(|e| anyhow::anyhow!("error serving static listener: {:?}", e))
 			});

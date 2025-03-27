@@ -5,6 +5,7 @@ use rmcp::serve_server;
 
 use crate::proxyprotocol;
 use crate::rbac;
+use crate::relay;
 use crate::relay::Relay;
 use crate::sse::App as SseApp;
 use crate::xds::{Listener, ListenerMode, Target, XdsStore as ProxyState};
@@ -23,6 +24,7 @@ pub struct StaticConfig {
 pub async fn run_local_client(
 	cfg: &StaticConfig,
 	state_ref: Arc<std::sync::RwLock<ProxyState>>,
+	metrics: Arc<relay::metrics::Metrics>,
 ) -> Result<(), ServingError> {
 	debug!(
 		"load local config: {}",
@@ -45,7 +47,7 @@ pub async fn run_local_client(
 		info!(%num_targets, %num_policies, "local config initialized");
 	}
 
-	serve_static_listener(cfg.listener.clone(), state_ref).await
+	serve_static_listener(cfg.listener.clone(), state_ref, metrics).await
 }
 
 #[derive(Debug)]
@@ -57,12 +59,13 @@ pub enum ServingError {
 pub async fn serve_static_listener(
 	listener: Listener,
 	state: Arc<std::sync::RwLock<ProxyState>>,
+	metrics: Arc<relay::metrics::Metrics>,
 ) -> std::result::Result<(), ServingError> {
 	match listener {
 		Listener::Stdio {} => {
 			let relay = serve_server(
 				// TODO: This is a hack
-				Relay::new(state.clone(), rbac::Identity::empty()),
+				Relay::new(state.clone(), rbac::Identity::empty(), metrics),
 				(tokio::io::stdin(), tokio::io::stdout()),
 			)
 			.await
@@ -89,7 +92,7 @@ pub async fn serve_static_listener(
 			let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port))
 				.await
 				.unwrap();
-			let app = SseApp::new(state.clone());
+			let app = SseApp::new(state.clone(), metrics);
 			let router = app.router();
 
 			let enable_proxy = Some(&ListenerMode::Proxy) == mode.as_ref();

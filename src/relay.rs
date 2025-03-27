@@ -1,3 +1,4 @@
+use crate::metrics::Recorder;
 use crate::rbac;
 use crate::xds::{OpenAPISchema, Target, TargetSpec, XdsStore};
 use http::Method;
@@ -18,19 +19,27 @@ use std::sync::Arc;
 use tokio::process::Command;
 use tokio::sync::RwLock;
 
+pub mod metrics;
+
 #[derive(Clone)]
 pub struct Relay {
 	state: Arc<std::sync::RwLock<XdsStore>>,
 	pool: Arc<RwLock<ConnectionPool>>,
 	id: rbac::Identity,
+	metrics: Arc<metrics::Metrics>,
 }
 
 impl Relay {
-	pub fn new(state: Arc<std::sync::RwLock<XdsStore>>, id: rbac::Identity) -> Self {
+	pub fn new(
+		state: Arc<std::sync::RwLock<XdsStore>>,
+		id: rbac::Identity,
+		metrics: Arc<metrics::Metrics>,
+	) -> Self {
 		Self {
 			state: state.clone(),
 			pool: Arc::new(RwLock::new(ConnectionPool::new(state.clone()))),
 			id,
+			metrics,
 		}
 	}
 }
@@ -275,9 +284,27 @@ impl ServerHandler for Relay {
 			arguments: request.arguments,
 		};
 
+		self.metrics.clone().record(
+			&metrics::ToolCall {
+				server: service_name.to_string(),
+				name: tool.to_string(),
+			},
+			(),
+		);
+
 		match service.as_ref().read().await.call_tool(req).await {
 			Ok(r) => Ok(r),
-			Err(e) => Err(e.into()),
+			Err(e) => {
+				self.metrics.clone().record(
+					&metrics::ToolCallError {
+						server: service_name.to_string(),
+						name: tool.to_string(),
+						error_type: e.error_code(),
+					},
+					(),
+				);
+				Err(e.into())
+			},
 		}
 	}
 }
@@ -400,6 +427,23 @@ enum UpstreamError {
 	OpenAPIError(anyhow::Error),
 }
 
+impl UpstreamError {
+	fn error_code(&self) -> String {
+		match self {
+			Self::ServiceError(e) => match e {
+				rmcp::ServiceError::McpError(_) => "mcp_error".to_string(),
+				rmcp::ServiceError::Timeout { timeout: _ } => "timeout".to_string(),
+				rmcp::ServiceError::Cancelled { reason } => {
+					reason.clone().unwrap_or("cancelled".to_string())
+				},
+				rmcp::ServiceError::UnexpectedResponse => "unexpected_response".to_string(),
+				rmcp::ServiceError::Transport(_) => "transport_error".to_string(),
+				_ => "unknown".to_string(),
+			},
+			Self::OpenAPIError(e) => e.to_string(),
+		}
+	}
+}
 impl From<rmcp::ServiceError> for UpstreamError {
 	fn from(value: rmcp::ServiceError) -> Self {
 		UpstreamError::ServiceError(value)
