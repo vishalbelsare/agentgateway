@@ -85,4 +85,6 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
     - name: Build
-      run: docker buildx build -t ghcr.io/mcpproxy-dev/mcp-relay:latest .
+      env:
+        DOCKER_BUILDER: "docker buildx"
+      run: make docker

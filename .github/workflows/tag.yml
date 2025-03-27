@@ -4,10 +4,6 @@ on:
   push:
     tags:
     - "v*.*.*"
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version number'
 
 jobs:
   push-image:

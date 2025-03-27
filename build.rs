@@ -47,7 +47,7 @@ fn main() -> Result<(), anyhow::Error> {
 				// Each line looks like `mcpproxy.dev.buildGitRevision=abc`
 				if let Some((key, value)) = line.split_once('=') {
 					let key = key.split('.').last().unwrap();
-					println!("cargo:rustc-env=MCPPROXY_BUILD_{key}={value}");
+					println!("cargo:rustc-env=MCPGW_BUILD_{key}={value}");
 				} else {
 					println!("cargo:warning=invalid build output {line}");
 				}
@@ -58,11 +58,11 @@ fn main() -> Result<(), anyhow::Error> {
 		},
 	};
 	println!(
-		"cargo:rustc-env=MCPPROXY_BUILD_RUSTC_VERSION={}",
+		"cargo:rustc-env=MCPGW_BUILD_RUSTC_VERSION={}",
 		rustc_version::version().unwrap()
 	);
 	println!(
-		"cargo:rustc-env=MCPPROXY_BUILD_PROFILE_NAME={}",
+		"cargo:rustc-env=MCPGW_BUILD_PROFILE_NAME={}",
 		profile_name
 	);
 
