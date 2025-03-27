@@ -75,7 +75,7 @@ jobs:
       run: |
         ls -R
         mkdir outputs
-        mv mcp-gw-macos-latest/mcp-gw outputs/mcp-gw-darwin-amd64
+        mv mcp-gw-macos-latest/mcp-gw outputs/mcp-gw-darwin-arm64
         mv mcp-gw-ubuntu-latest/mcp-gw outputs/mcp-gw-linux-amd64
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
