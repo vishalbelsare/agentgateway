@@ -44,7 +44,7 @@ fn main() -> Result<(), anyhow::Error> {
 	match Command::new("common/scripts/report_build_info.sh").output() {
 		Ok(output) => {
 			for line in String::from_utf8(output.stdout).unwrap().lines() {
-				// Each line looks like `mcpproxy.dev.buildGitRevision=abc`
+				// Each line looks like `mcp-gw.dev.buildGitRevision=abc`
 				if let Some((key, value)) = line.split_once('=') {
 					let key = key.split('.').last().unwrap();
 					println!("cargo:rustc-env=MCPGW_BUILD_{key}={value}");
