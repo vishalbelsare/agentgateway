@@ -16,7 +16,6 @@ use mcp_gw::xds::ProxyStateUpdater;
 use mcp_gw::xds::XdsStore as ProxyState;
 use mcp_gw::xds::types::mcp::kgateway_dev::rbac::Config as XdsRbac;
 use mcp_gw::xds::types::mcp::kgateway_dev::target::Target as XdsTarget;
-use reqwest;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -54,20 +53,20 @@ async fn main() -> Result<()> {
 
 	let cfg: Config = match (args.file, args.config) {
 		(Some(filename), None) => {
-      // If filename is a URL, download it
-      match reqwest::Url::parse(&filename) {
-        Ok(url) => {
-          println!("Downloading config from URL: {}", url);
-          let response = reqwest::get(url).await?;
-          let body = response.text().await?;
-          serde_json::from_str(&body)?
-        }
-        Err(_) => {
-          println!("Reading config from file: {}", filename);
-          let file = tokio::fs::read_to_string(filename).await?;
-          serde_json::from_str(&file)?
-        }
-      }
+			// If filename is a URL, download it
+			match reqwest::Url::parse(&filename) {
+				Ok(url) => {
+					println!("Downloading config from URL: {}", url);
+					let response = reqwest::get(url).await?;
+					let body = response.text().await?;
+					serde_json::from_str(&body)?
+				},
+				Err(_) => {
+					println!("Reading config from file: {}", filename);
+					let file = tokio::fs::read_to_string(filename).await?;
+					serde_json::from_str(&file)?
+				},
+			}
 		},
 		(None, Some(config)) => {
 			let file = std::str::from_utf8(&config).map(|s| s.to_string())?;
