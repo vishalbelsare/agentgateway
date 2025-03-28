@@ -454,17 +454,18 @@ impl ConnectionPool {
 		let transport: UpstreamTarget = match &target.spec {
 			TargetSpec::Sse { host, port, path } => {
 				tracing::trace!("starting sse transport for target: {}", target.name);
-				let path = if path.is_empty() { "/sse".to_string() } else { path.clone() };
-				let mut url = format!("{}:{}{}", host, port, path);
-				if *port == 443{
-					url = format!("https://{}", url);
-				} else {
-					url = format!("http://{}", url);
-				}
+				let path = match path.as_str() {
+					"" => "/sse",
+					_ => path,
+				};
+				let scheme = match port {
+					443 => "https",
+					_ => "http",
+				};
+				
+				let url = format!("{}://{}:{}{}", scheme, host, port, path);
 
-
-				let transport: SseTransport =
-					SseTransport::start(url.as_str()).await?;
+				let transport = SseTransport::start(url.as_str()).await?;
 				UpstreamTarget::Mcp(serve_client((), transport).await?)
 			},
 			TargetSpec::Stdio { cmd, args } => {
