@@ -12,7 +12,6 @@
 - [x] **Multi Tenant:** mcp-gw supports multiple tenants, each with their own set of resources and users.
 
 <br>
-<br>
 
 
 # Getting Started 
@@ -24,8 +23,14 @@ cargo build
 
 **Run**
 
+Local config file
 ```bash
 cargo run -- -f /home/eitanyarmush/src/kagent-dev/mcp-relay/examples/config/static.json
+```
+
+Remote config file
+```bash
+cargo run -- -f https://raw.githubusercontent.com/mcp-gw/mcp-gw/main/examples/config/static.json
 ```
 
 **Test**
