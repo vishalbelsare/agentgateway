@@ -11,20 +11,24 @@
 - [x] **Security First:** mcp-gw includes a robust MCP focused RBAC system.
 - [x] **Multi Tenant:** mcp-gw supports multiple tenants, each with their own set of resources and users.
 
+<br>
+<br>
 
-## Build
+
+# Getting Started 
+**Build**
 
 ```bash
 cargo build
 ```
 
-## Run
+**Run**
 
 ```bash
 cargo run -- -f /home/eitanyarmush/src/kagent-dev/mcp-relay/examples/config/static.json
 ```
 
-## Test
+**Test**
 
 ```bash
 npx @modelcontextprotocol/inspector
