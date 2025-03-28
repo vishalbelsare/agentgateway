@@ -452,10 +452,19 @@ impl ConnectionPool {
 	async fn connect(&self, target: &Target) -> Result<Arc<RwLock<UpstreamTarget>>, anyhow::Error> {
 		tracing::trace!("connecting to target: {}", target.name);
 		let transport: UpstreamTarget = match &target.spec {
-			TargetSpec::Sse { host, port } => {
+			TargetSpec::Sse { host, port, path } => {
 				tracing::trace!("starting sse transport for target: {}", target.name);
+				let path = if path.is_empty() { "/sse".to_string() } else { path.clone() };
+				let mut url = format!("{}:{}{}", host, port, path);
+				if *port == 443{
+					url = format!("https://{}", url);
+				} else {
+					url = format!("http://{}", url);
+				}
+
+
 				let transport: SseTransport =
-					SseTransport::start(format!("http://{}:{}/sse", host, port).as_str()).await?;
+					SseTransport::start(url.as_str()).await?;
 				UpstreamTarget::Mcp(serve_client((), transport).await?)
 			},
 			TargetSpec::Stdio { cmd, args } => {

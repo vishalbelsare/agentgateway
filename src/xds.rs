@@ -187,7 +187,7 @@ pub struct Target {
 #[serde(tag = "type")]
 pub enum TargetSpec {
 	#[serde(rename = "sse")]
-	Sse { host: String, port: u32 },
+	Sse { host: String, port: u32, path: String },
 	#[serde(rename = "stdio")]
 	Stdio { cmd: String, args: Vec<String> },
 	#[serde(rename = "openapi")]
@@ -211,6 +211,7 @@ impl From<&XdsTarget> for Target {
 				TargetSpec::Sse {
 					host: value.host.clone(),
 					port: value.port,
+					path: value.path.clone(),
 				}
 			},
 		}
