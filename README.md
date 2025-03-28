@@ -2,7 +2,7 @@
 
 # mcp-gw
 
-![Rust Build](https://github.com/mcp-gw/mcp-gw/actions/workflows/pull_request.yml/badge.svg)
+![Rust Build](https://github.com/mcp-gw/mcp-gw/actions/workflows/pull_request.yml/badge.svg?branch=main)
 
 
 A proxy for the MCP protocol.
