@@ -100,22 +100,15 @@ async fn main() -> Result<()> {
 			});
 
 			// Add metrics listener
-			let listener = tokio::net::TcpListener::bind("127.0.0.1:9091").await?;
-			let app = MetricsApp::new(Arc::new(registry));
-			let router = app.router();
 			run_set.spawn(async move {
-				axum::serve(listener, router)
+				start_metrics_service(Arc::new(registry))
 					.await
 					.map_err(|e| anyhow::anyhow!("error serving metrics: {:?}", e))
 			});
 
 			// Add admin listener
-			let state_3 = state.clone();
-			let listener = tokio::net::TcpListener::bind("127.0.0.1:19000").await?;
-			let app = AdminApp::new(state_3);
-			let router = app.router();
 			run_set.spawn(async move {
-				axum::serve(listener, router)
+				start_admin_service(state.clone())
 					.await
 					.map_err(|e| anyhow::anyhow!("error serving admin: {:?}", e))
 			});
@@ -149,15 +142,13 @@ async fn main() -> Result<()> {
 			});
 
 			// Add admin listener
-			let state_3 = state.clone();
-			let listener = tokio::net::TcpListener::bind("127.0.0.1:19000").await?;
-			let app = AdminApp::new(state_3);
-			let router = app.router();
-			run_set.spawn(async move {
-				axum::serve(listener, router)
-					.await
-					.map_err(|e| anyhow::anyhow!("error serving admin: {:?}", e))
-			});
+
+      let state_3 = state.clone();
+      run_set.spawn(async move {
+        start_admin_service(state_3)
+          .await
+          .map_err(|e| anyhow::anyhow!("error serving admin: {:?}", e))
+      });
 
 			let relay_metrics = relay::metrics::Metrics::new(&mut registry);
 			run_set.spawn(async move {
@@ -168,15 +159,12 @@ async fn main() -> Result<()> {
 					.map_err(|e| anyhow::anyhow!("error serving static listener: {:?}", e))
 			});
 
-			// Add metrics listener
-			let listener = tokio::net::TcpListener::bind("127.0.0.1:9091").await?;
-			let app = MetricsApp::new(Arc::new(registry));
-			let router = app.router();
-			run_set.spawn(async move {
-				axum::serve(listener, router)
-					.await
-					.map_err(|e| anyhow::anyhow!("error serving metrics: {:?}", e))
-			});
+      // Add metrics listener
+      run_set.spawn(async move {
+        start_metrics_service(Arc::new(registry))
+          .await
+          .map_err(|e| anyhow::anyhow!("error serving metrics: {:?}", e))
+      });
 
 			// Wait for all servers to finish? I think this does what I want :shrug:
 			while let Some(result) = run_set.join_next().await {
@@ -189,6 +177,21 @@ async fn main() -> Result<()> {
 	Ok(())
 }
 
+async fn start_metrics_service(registry: Arc<Registry>) -> Result<(), std::io::Error> {
+  let listener = tokio::net::TcpListener::bind("127.0.0.1:9091").await?;
+  let app = MetricsApp::new(registry);
+  let router = app.router();
+  axum::serve(listener, router)
+    .await
+}
+
+async fn start_admin_service(state: Arc<RwLock<ProxyState>>) -> Result<(), std::io::Error> {
+  let listener = tokio::net::TcpListener::bind("127.0.0.1:19000").await?;
+  let app = AdminApp::new(state);
+  let router = app.router();
+  axum::serve(listener, router)
+    .await
+}
 /*
 Listener(1) -> Relay(1) -> Target(1-n)
 Listener(1) -> Relay(1) -> Target(1-n)
