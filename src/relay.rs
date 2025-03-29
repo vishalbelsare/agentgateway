@@ -462,7 +462,7 @@ impl ConnectionPool {
 					443 => "https",
 					_ => "http",
 				};
-				
+
 				let url = format!("{}://{}:{}{}", scheme, host, port, path);
 
 				let transport = SseTransport::start(url.as_str()).await?;

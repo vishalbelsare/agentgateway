@@ -188,7 +188,11 @@ pub struct Target {
 #[serde(tag = "type")]
 pub enum TargetSpec {
 	#[serde(rename = "sse")]
-	Sse { host: String, port: u32, path: String },
+	Sse {
+		host: String,
+		port: u32,
+		path: String,
+	},
 	#[serde(rename = "stdio")]
 	Stdio { cmd: String, args: Vec<String> },
 	#[serde(rename = "openapi")]
