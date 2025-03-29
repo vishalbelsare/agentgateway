@@ -84,6 +84,27 @@ impl JwtAuthenticator {
 	}
 }
 
+pub async fn sync_jwks_loop(authn: Arc<RwLock<Option<JwtAuthenticator>>>) -> Result<(), JwkError> {
+  loop {
+    let mut authenticator = authn.write().await;
+    match authenticator.as_mut() {
+      Some(authenticator) => match authenticator.sync_jwks().await {
+        Ok(_) => {
+          tracing::trace!("synced jwks");
+        },
+        Err(e) => {
+          tracing::error!("error syncing jwks: {:?}", e);
+        },
+      },
+      None => {
+        tracing::trace!("no authenticator, skipping sync");
+      },
+    }
+    drop(authenticator);
+    tokio::time::sleep(Duration::from_secs(10)).await;
+  }
+}
+
 async fn fetch_jwks(remote: &JwksRemoteSource) -> Result<Jwk, JwkError> {
 	let url = format!("{}:{}", remote.url, remote.port);
 	let url = format!(

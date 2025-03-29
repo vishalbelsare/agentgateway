@@ -285,27 +285,10 @@ impl Listener {
 					None => Arc::new(tokio::sync::RwLock::new(None)),
 				};
 
-				let mut run_set = tokio::task::JoinSet::new();
+				let mut run_set: tokio::task::JoinSet<Result<(), anyhow::Error>> = tokio::task::JoinSet::new();
 				let clone = authenticator.clone();
 				run_set.spawn(async move {
-					loop {
-						let mut authenticator = clone.write().await;
-						match authenticator.as_mut() {
-							Some(authenticator) => match authenticator.sync_jwks().await {
-								Ok(_) => {
-									tracing::trace!("synced jwks");
-								},
-								Err(e) => {
-									tracing::error!("error syncing jwks: {:?}", e);
-								},
-							},
-							None => {
-								tracing::trace!("no authenticator, skipping sync");
-							},
-						}
-						drop(authenticator);
-						tokio::time::sleep(Duration::from_secs(10)).await;
-					}
+					crate::authn::sync_jwks_loop(clone).await.map_err(|e| anyhow::anyhow!("error syncing jwks: {:?}", e))
 				});
 
 				let app = SseApp::new(state.clone(), metrics, authenticator);
@@ -325,7 +308,7 @@ impl Listener {
 						.map_err(ServingError::Sse)
 						.inspect_err(|e| {
 							tracing::error!("serving error: {:?}", e);
-						})
+						}).map_err(|e| anyhow::anyhow!("serving error: {:?}", e))
 				});
 
 				while let Some(res) = run_set.join_next().await {
