@@ -1,6 +1,6 @@
+use crate::authn;
 use crate::relay;
 use crate::relay::Relay;
-use crate::xds;
 use crate::xds::XdsStore as AppState;
 use crate::{proxyprotocol, rbac};
 use anyhow::Result;
@@ -19,17 +19,13 @@ use axum_extra::{
 	headers::{Authorization, authorization::Bearer},
 };
 use futures::{SinkExt, StreamExt, stream::Stream};
-use jsonwebtoken::jwk::Jwk;
-use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use rmcp::model::ClientJsonRpcMessage;
 use rmcp::serve_server;
-use serde_json::Value;
 use serde_json::json;
-use serde_json::map::Map;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{self};
-
+use tokio::sync::RwLock;
 type SessionId = Arc<str>;
 
 fn session_id() -> SessionId {
@@ -43,17 +39,20 @@ pub struct App {
 	txs:
 		Arc<tokio::sync::RwLock<HashMap<SessionId, tokio::sync::mpsc::Sender<ClientJsonRpcMessage>>>>,
 	metrics: Arc<relay::metrics::Metrics>,
+	authn: Arc<RwLock<Option<authn::JwtAuthenticator>>>,
 }
 
 impl App {
 	pub fn new(
 		state: Arc<std::sync::RwLock<AppState>>,
 		metrics: Arc<relay::metrics::Metrics>,
+		authn: Arc<RwLock<Option<authn::JwtAuthenticator>>>,
 	) -> Self {
 		Self {
 			state,
 			txs: Default::default(),
 			metrics,
+			authn,
 		}
 	}
 	pub fn router(&self) -> Router {
@@ -70,79 +69,22 @@ impl OptionalFromRequestParts<App> for rbac::Claims {
 		parts: &mut Parts,
 		state: &App,
 	) -> Result<Option<Self>, Self::Rejection> {
-		tracing::info!("from_request_parts");
-		let sse = state.state.read().unwrap().listener.clone();
-		match sse {
-			xds::Listener::Sse {
-				authn: Some(authn), ..
-			} => match authn {
-				xds::Authn::Jwt(jwt) => {
-					tracing::info!("jwt");
-					let TypedHeader(Authorization(bearer)) = parts
-						.extract::<TypedHeader<Authorization<Bearer>>>()
-						.await
-						.map_err(AuthError::NoAuthHeaderPresent)?;
-					tracing::info!("bearer: {}", bearer.token());
-					let jwk: Jwk = match jwt.jwks {
-						xds::JwksSource::Local { source } => {
-							tracing::info!("local jwks");
-							match source {
-								xds::JwksLocalSource::Inline(jwk) => {
-									tracing::info!("inline jwk");
-									let jwk: Jwk = serde_json::from_str(&jwk).map_err(AuthError::JwksParseError)?;
-									jwk
-								},
-								xds::JwksLocalSource::File(path) => {
-									tracing::info!("file jwks");
-									let file = std::fs::File::open(path).map_err(AuthError::JwksFileError)?;
-									tracing::info!("file opened");
-									let jwk: Jwk =
-										serde_json::from_reader(file).map_err(AuthError::JwksParseError)?;
-									tracing::info!("file jwk parsed");
-									jwk
-								},
-							}
-						},
-					};
-
-					let header = decode_header(bearer.token()).map_err(AuthError::InvalidToken)?;
-					tracing::info!("header: {:?}", header);
-					if !jwk.is_supported() {
-						tracing::error!("unsupported algorithm");
-						return Err(AuthError::UnsupportedAlgorithm);
-					}
-					let validation = {
-						let mut validation = Validation::new(header.alg);
-						validation.set_audience(
-							jwt
-								.audience
-								.unwrap_or_default()
-								.iter()
-								.map(|s| s.as_str())
-								.collect::<Vec<&str>>()
-								.as_slice(),
-						);
-						validation.set_issuer(
-							jwt
-								.issuer
-								.unwrap_or_default()
-								.iter()
-								.map(|s| s.as_str())
-								.collect::<Vec<&str>>()
-								.as_slice(),
-						);
-						validation.sub = jwt.subject;
-						validation
-					};
-
-					let decoding_key = DecodingKey::from_jwk(&jwk).map_err(AuthError::InvalidJWK)?;
-					let token_data = decode::<Map<String, Value>>(bearer.token(), &decoding_key, &validation)
-						.map_err(AuthError::InvalidToken)?;
-					tracing::info!("token data: {:?}", token_data);
-					Ok(Some(rbac::Claims::new(token_data.claims)))
-				},
+		let authn = state.authn.read().await;
+		match authn.as_ref() {
+			Some(authn) => {
+				tracing::info!("jwt");
+				let TypedHeader(Authorization(bearer)) = parts
+					.extract::<TypedHeader<Authorization<Bearer>>>()
+					.await
+					.map_err(AuthError::NoAuthHeaderPresent)?;
+				tracing::info!("bearer: {}", bearer.token());
+				let claims = authn.authenticate(bearer.token()).await;
+				match claims {
+					Ok(claims) => Ok(Some(claims)),
+					Err(e) => Err(AuthError::JwtError(e)),
+				}
 			},
-			_ => Ok(None),
+			None => Ok(None),
 		}
 	}
 }
@@ -154,24 +96,11 @@ impl IntoResponse for AuthError {
 				StatusCode::BAD_REQUEST,
 				format!("No auth header present, error: {}", e),
 			),
-			AuthError::InvalidToken(e) => (
+			AuthError::JwtError(e) => (
 				StatusCode::BAD_REQUEST,
-				format!("Invalid token, error: {}", e),
-			),
-			AuthError::InvalidJWK(e) => (
-				StatusCode::BAD_REQUEST,
-				format!("Invalid JWK, error: {}", e),
-			),
-			AuthError::UnsupportedAlgorithm => {
-				(StatusCode::BAD_REQUEST, "Unsupported algorithm".to_string())
-			},
-			AuthError::JwksFileError(e) => (
-				StatusCode::BAD_REQUEST,
-				format!("Invalid JWK file, error: {}", e),
-			),
-			AuthError::JwksParseError(e) => (
-				StatusCode::BAD_REQUEST,
-				format!("Invalid JWK, error: {}", e),
+				match e {
+					authn::AuthError::InvalidToken(e) => format!("Invalid token, error: {}", e),
+				},
 			),
 		};
 		let body = Json(json!({
@@ -184,11 +113,7 @@ impl IntoResponse for AuthError {
 #[derive(Debug)]
 pub enum AuthError {
 	NoAuthHeaderPresent(TypedHeaderRejection),
-	InvalidToken(jsonwebtoken::errors::Error),
-	InvalidJWK(jsonwebtoken::errors::Error),
-	JwksFileError(std::io::Error),
-	JwksParseError(serde_json::Error),
-	UnsupportedAlgorithm,
+	JwtError(authn::AuthError),
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -199,6 +124,8 @@ pub struct PostEventQuery {
 
 async fn post_event_handler(
 	State(app): State<App>,
+	ConnectInfo(_connection): ConnectInfo<proxyprotocol::Address>,
+	_claims: Option<rbac::Claims>,
 	Query(PostEventQuery { session_id }): Query<PostEventQuery>,
 	Json(message): Json<ClientJsonRpcMessage>,
 ) -> Result<StatusCode, StatusCode> {
