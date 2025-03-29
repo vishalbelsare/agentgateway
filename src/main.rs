@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use mcp_gw::config::Config as XdsConfig;
-use mcp_gw::r#static::{StaticConfig, run_local_client, serve_static_listener};
+use mcp_gw::r#static::{StaticConfig, run_local_client};
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
@@ -161,7 +161,9 @@ async fn main() -> Result<()> {
 
 			let relay_metrics = relay::metrics::Metrics::new(&mut registry);
 			run_set.spawn(async move {
-				serve_static_listener(cfg.listener, state.clone(), Arc::new(relay_metrics))
+				cfg
+					.listener
+					.listen(state.clone(), Arc::new(relay_metrics))
 					.await
 					.map_err(|e| anyhow::anyhow!("error serving static listener: {:?}", e))
 			});

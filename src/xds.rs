@@ -4,8 +4,9 @@ use std::fmt::Formatter;
 use std::sync::{Arc, RwLock};
 use tracing::Level;
 
+use rmcp::serve_server;
 use tokio::sync::mpsc;
-use tracing::{error, instrument, warn};
+use tracing::{error, info, instrument, warn};
 
 pub use client::*;
 pub use metrics::*;
@@ -21,8 +22,8 @@ use crate::xds;
 use openapiv3::Paths;
 use std::collections::HashMap;
 
+use crate::sse::App as SseApp;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 pub mod client;
 pub mod metrics;
@@ -220,6 +221,7 @@ impl From<&XdsTarget> for Target {
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(tag = "type")]
+#[allow(clippy::large_enum_variant)]
 pub enum Listener {
 	#[serde(rename = "sse")]
 	Sse {
@@ -232,42 +234,111 @@ pub enum Listener {
 	Stdio {},
 }
 
+#[derive(Debug)]
+pub enum ServingError {
+	Sse(std::io::Error),
+	StdIo(tokio::task::JoinError),
+}
+
+impl Listener {
+	pub async fn listen(
+		&self,
+		state: Arc<std::sync::RwLock<XdsStore>>,
+		metrics: Arc<crate::relay::metrics::Metrics>,
+	) -> Result<(), ServingError> {
+		match self {
+			Listener::Stdio {} => {
+				let relay = serve_server(
+					// TODO: This is a hack
+					crate::relay::Relay::new(state.clone(), rbac::Identity::empty(), metrics),
+					(tokio::io::stdin(), tokio::io::stdout()),
+				)
+				.await
+				.inspect_err(|e| {
+					tracing::error!("serving error: {:?}", e);
+				})
+				.unwrap();
+				tracing::info!("serving stdio");
+				relay
+					.waiting()
+					.await
+					.map_err(ServingError::StdIo)
+					.map(|_| ())
+					.inspect_err(|e| {
+						tracing::error!("serving error: {:?}", e);
+					})
+			},
+			Listener::Sse {
+				host,
+				port,
+				mode,
+				authn,
+			} => {
+				let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port))
+					.await
+					.unwrap();
+				let authenticator = match authn {
+					Some(authn) => match authn {
+						Authn::Jwt(jwt) => Arc::new(tokio::sync::RwLock::new(Some(
+							crate::authn::JwtAuthenticator::new(jwt).await.unwrap(),
+						))),
+					},
+					None => Arc::new(tokio::sync::RwLock::new(None)),
+				};
+
+				let mut run_set: tokio::task::JoinSet<Result<(), anyhow::Error>> =
+					tokio::task::JoinSet::new();
+				let clone = authenticator.clone();
+				run_set.spawn(async move {
+					crate::authn::sync_jwks_loop(clone)
+						.await
+						.map_err(|e| anyhow::anyhow!("error syncing jwks: {:?}", e))
+				});
+
+				let app = SseApp::new(state.clone(), metrics, authenticator);
+				let router = app.router();
+
+				let enable_proxy = Some(&ListenerMode::Proxy) == mode.as_ref();
+
+				let listener = crate::proxyprotocol::Listener::new(listener, enable_proxy);
+				let svc: axum::extract::connect_info::IntoMakeServiceWithConnectInfo<
+					axum::Router,
+					crate::proxyprotocol::Address,
+				> = router.into_make_service_with_connect_info::<crate::proxyprotocol::Address>();
+				info!("serving sse on {}:{}", host, port);
+				run_set.spawn(async move {
+					axum::serve(listener, svc)
+						.await
+						.map_err(ServingError::Sse)
+						.inspect_err(|e| {
+							tracing::error!("serving error: {:?}", e);
+						})
+						.map_err(|e| anyhow::anyhow!("serving error: {:?}", e))
+				});
+
+				while let Some(res) = run_set.join_next().await {
+					match res {
+						Ok(_) => {},
+						Err(e) => {
+							tracing::error!("serving error: {:?}", e);
+						},
+					}
+				}
+				Ok(())
+			},
+		}
+	}
+}
+
+pub trait Authenticator {
+	fn authenticate(&self, token: &str) -> Result<(), Error>;
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(tag = "type")]
 pub enum Authn {
 	#[serde(rename = "jwt")]
-	Jwt(JwtConfig),
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct JwtConfig {
-	pub issuer: Option<HashSet<String>>,
-	pub audience: Option<HashSet<String>>,
-	pub subject: Option<String>,
-	pub jwks: JwksSource,
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(tag = "type")]
-pub enum JwksSource {
-	// #[serde(rename = "remote")]
-	// Remote { url: String },
-	#[serde(rename = "local")]
-	Local { source: JwksLocalSource },
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct JwksRemoteSource {
-	pub url: String,
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(tag = "type", content = "data")]
-pub enum JwksLocalSource {
-	#[serde(rename = "file")]
-	File(String),
-	#[serde(rename = "inline")]
-	Inline(String),
+	Jwt(crate::authn::JwtConfig),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]

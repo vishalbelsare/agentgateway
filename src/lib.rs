@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod authn;
 pub mod config;
 pub mod drain;
 pub mod metrics;
