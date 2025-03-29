@@ -1,7 +1,8 @@
+use crate::backend::{BackendAuth, build};
 use crate::metrics::Recorder;
 use crate::rbac;
 use crate::xds::{OpenAPISchema, Target, TargetSpec, XdsStore};
-use http::Method;
+use http::{HeaderMap, HeaderValue, Method, header::AUTHORIZATION};
 use itertools::Itertools;
 use rmcp::RoleClient;
 use rmcp::serve_client;
@@ -452,7 +453,12 @@ impl ConnectionPool {
 	async fn connect(&self, target: &Target) -> Result<Arc<RwLock<UpstreamTarget>>, anyhow::Error> {
 		tracing::trace!("connecting to target: {}", target.name);
 		let transport: UpstreamTarget = match &target.spec {
-			TargetSpec::Sse { host, port, path } => {
+			TargetSpec::Sse {
+				host,
+				port,
+				path,
+				backend_auth,
+			} => {
 				tracing::trace!("starting sse transport for target: {}", target.name);
 				let path = match path.as_str() {
 					"" => "/sse",
@@ -464,8 +470,25 @@ impl ConnectionPool {
 				};
 
 				let url = format!("{}://{}:{}{}", scheme, host, port, path);
+				let transport = match backend_auth.clone() {
+					Some(backend_auth) => {
+						let backend_auth = build(backend_auth).await;
+						let token = backend_auth.get_token().await?;
+						let mut headers = HeaderMap::new();
+						let auth_value = HeaderValue::from_str(token.as_str()).unwrap();
+						headers.insert(AUTHORIZATION, auth_value);
+						let client = reqwest::Client::builder()
+							.default_headers(headers)
+							.build()
+							.unwrap();
+						SseTransport::start_with_client(url.as_str(), client).await?
+					},
+					None => {
+						let client = reqwest::Client::new();
+						SseTransport::start_with_client(url.as_str(), client).await?
+					},
+				};
 
-				let transport = SseTransport::start(url.as_str()).await?;
 				UpstreamTarget::Mcp(serve_client((), transport).await?)
 			},
 			TargetSpec::Stdio { cmd, args } => {
