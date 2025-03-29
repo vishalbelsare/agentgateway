@@ -6,7 +6,6 @@ use tracing::Level;
 
 use rmcp::serve_server;
 use tokio::sync::mpsc;
-use tokio::time::Duration;
 use tracing::{error, info, instrument, warn};
 
 pub use client::*;
@@ -221,6 +220,7 @@ impl From<&XdsTarget> for Target {
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(tag = "type")]
+#[allow(clippy::large_enum_variant)]
 pub enum Listener {
 	#[serde(rename = "sse")]
 	Sse {
@@ -285,10 +285,13 @@ impl Listener {
 					None => Arc::new(tokio::sync::RwLock::new(None)),
 				};
 
-				let mut run_set: tokio::task::JoinSet<Result<(), anyhow::Error>> = tokio::task::JoinSet::new();
+				let mut run_set: tokio::task::JoinSet<Result<(), anyhow::Error>> =
+					tokio::task::JoinSet::new();
 				let clone = authenticator.clone();
 				run_set.spawn(async move {
-					crate::authn::sync_jwks_loop(clone).await.map_err(|e| anyhow::anyhow!("error syncing jwks: {:?}", e))
+					crate::authn::sync_jwks_loop(clone)
+						.await
+						.map_err(|e| anyhow::anyhow!("error syncing jwks: {:?}", e))
 				});
 
 				let app = SseApp::new(state.clone(), metrics, authenticator);
@@ -308,7 +311,8 @@ impl Listener {
 						.map_err(ServingError::Sse)
 						.inspect_err(|e| {
 							tracing::error!("serving error: {:?}", e);
-						}).map_err(|e| anyhow::anyhow!("serving error: {:?}", e))
+						})
+						.map_err(|e| anyhow::anyhow!("serving error: {:?}", e))
 				});
 
 				while let Some(res) = run_set.join_next().await {
