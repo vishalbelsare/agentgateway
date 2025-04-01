@@ -3,10 +3,8 @@ use std::fmt;
 use std::fmt::Formatter;
 use std::sync::{Arc, RwLock};
 use tracing::Level;
-
-use rmcp::serve_server;
 use tokio::sync::mpsc;
-use tracing::{error, info, instrument, warn};
+use tracing::{error, instrument, warn};
 
 pub use client::*;
 pub use metrics::*;
@@ -19,11 +17,11 @@ use self::envoy::service::discovery::v3::DeltaDiscoveryRequest;
 use crate::rbac;
 use crate::strng::Strng;
 use crate::xds;
-use openapiv3::Paths;
 use std::collections::HashMap;
 
 use crate::backend;
-use crate::sse::App as SseApp;
+use crate::inbound;
+use crate::outbound;
 use serde::{Deserialize, Serialize};
 
 pub mod client;
@@ -106,7 +104,7 @@ impl ProxyStateUpdateMutator {
         fields(name=%target.name),
     )]
 	pub fn insert_target(&self, state: &mut XdsStore, target: XdsTarget) -> anyhow::Result<()> {
-		let target = Target::from(&target);
+		let target = outbound::Target::from(&target);
 		// TODO: This is a hack
 		// TODO: Separate connection/LB from insertion
 		state.targets.insert(target);
@@ -179,43 +177,12 @@ impl Handler<XdsRbac> for ProxyStateUpdater {
 	}
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct Target {
-	pub name: String,
-	pub spec: TargetSpec,
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-#[serde(tag = "type")]
-pub enum TargetSpec {
-	#[serde(rename = "sse")]
-	Sse {
-		host: String,
-		port: u32,
-		path: String,
-		backend_auth: Option<backend::BackendAuthConfig>,
-	},
-	#[serde(rename = "stdio")]
-	Stdio { cmd: String, args: Vec<String> },
-	#[serde(rename = "openapi")]
-	OpenAPI {
-		host: String,
-		port: u32,
-		schema: OpenAPISchema,
-	},
-}
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub struct OpenAPISchema {
-	// The crate OpenAPI type requires a lot more, we only need paths for now so use only a subset of it.
-	pub paths: Paths,
-}
-
-impl From<&XdsTarget> for Target {
+impl From<&XdsTarget> for outbound::Target {
 	fn from(value: &XdsTarget) -> Self {
-		Target {
+		outbound::Target {
 			name: value.name.clone(),
 			spec: {
-				TargetSpec::Sse {
+				outbound::TargetSpec::Sse {
 					host: value.host.clone(),
 					port: value.port,
 					path: value.path.clone(),
@@ -226,143 +193,9 @@ impl From<&XdsTarget> for Target {
 	}
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(tag = "type")]
-#[allow(clippy::large_enum_variant)]
-pub enum Listener {
-	#[serde(rename = "sse")]
-	Sse {
-		host: String,
-		port: u32,
-		mode: Option<ListenerMode>,
-		authn: Option<Authn>,
-	},
-	#[serde(rename = "stdio")]
-	Stdio {},
-}
-
-#[derive(Debug)]
-pub enum ServingError {
-	Sse(std::io::Error),
-	StdIo(tokio::task::JoinError),
-}
-
-impl Listener {
-	pub async fn listen(
-		&self,
-		state: Arc<std::sync::RwLock<XdsStore>>,
-		metrics: Arc<crate::relay::metrics::Metrics>,
-	) -> Result<(), ServingError> {
-		match self {
-			Listener::Stdio {} => {
-				let relay = serve_server(
-					// TODO: This is a hack
-					crate::relay::Relay::new(state.clone(), rbac::Identity::empty(), metrics),
-					(tokio::io::stdin(), tokio::io::stdout()),
-				)
-				.await
-				.inspect_err(|e| {
-					tracing::error!("serving error: {:?}", e);
-				})
-				.unwrap();
-				tracing::info!("serving stdio");
-				relay
-					.waiting()
-					.await
-					.map_err(ServingError::StdIo)
-					.map(|_| ())
-					.inspect_err(|e| {
-						tracing::error!("serving error: {:?}", e);
-					})
-			},
-			Listener::Sse {
-				host,
-				port,
-				mode,
-				authn,
-			} => {
-				let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port))
-					.await
-					.unwrap();
-				let authenticator = match authn {
-					Some(authn) => match authn {
-						Authn::Jwt(jwt) => Arc::new(tokio::sync::RwLock::new(Some(
-							crate::authn::JwtAuthenticator::new(jwt).await.unwrap(),
-						))),
-					},
-					None => Arc::new(tokio::sync::RwLock::new(None)),
-				};
-
-				let mut run_set: tokio::task::JoinSet<Result<(), anyhow::Error>> =
-					tokio::task::JoinSet::new();
-				let clone = authenticator.clone();
-				run_set.spawn(async move {
-					crate::authn::sync_jwks_loop(clone)
-						.await
-						.map_err(|e| anyhow::anyhow!("error syncing jwks: {:?}", e))
-				});
-
-				let app = SseApp::new(state.clone(), metrics, authenticator);
-				let router = app.router();
-
-				let enable_proxy = Some(&ListenerMode::Proxy) == mode.as_ref();
-
-				let listener = crate::proxyprotocol::Listener::new(listener, enable_proxy);
-				let svc: axum::extract::connect_info::IntoMakeServiceWithConnectInfo<
-					axum::Router,
-					crate::proxyprotocol::Address,
-				> = router.into_make_service_with_connect_info::<crate::proxyprotocol::Address>();
-				info!("serving sse on {}:{}", host, port);
-				run_set.spawn(async move {
-					axum::serve(listener, svc)
-						.await
-						.map_err(ServingError::Sse)
-						.inspect_err(|e| {
-							tracing::error!("serving error: {:?}", e);
-						})
-						.map_err(|e| anyhow::anyhow!("serving error: {:?}", e))
-				});
-
-				while let Some(res) = run_set.join_next().await {
-					match res {
-						Ok(_) => {},
-						Err(e) => {
-							tracing::error!("serving error: {:?}", e);
-						},
-					}
-				}
-				Ok(())
-			},
-		}
-	}
-}
-
-pub trait Authenticator {
-	fn authenticate(&self, token: &str) -> Result<(), Error>;
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(tag = "type")]
-pub enum Authn {
-	#[serde(rename = "jwt")]
-	Jwt(crate::authn::JwtConfig),
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub enum ListenerMode {
-	#[serde(rename = "proxy")]
-	Proxy,
-}
-
-impl Default for Listener {
-	fn default() -> Self {
-		Self::Stdio {}
-	}
-}
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TargetStore {
-	by_name: HashMap<String, Target>,
+	by_name: HashMap<String, outbound::Target>,
 }
 
 impl Default for TargetStore {
@@ -383,15 +216,15 @@ impl TargetStore {
 		self.by_name.remove(name);
 	}
 
-	pub fn insert(&mut self, target: Target) {
+	pub fn insert(&mut self, target: outbound::Target) {
 		self.by_name.insert(target.name.clone(), target);
 	}
 
-	pub fn get(&self, name: &str) -> Option<&Target> {
+	pub fn get(&self, name: &str) -> Option<&outbound::Target> {
 		self.by_name.get(name)
 	}
 
-	pub fn iter(&self) -> impl Iterator<Item = (String, &Target)> {
+	pub fn iter(&self) -> impl Iterator<Item = (String, &outbound::Target)> {
 		self
 			.by_name
 			.iter()
@@ -446,15 +279,22 @@ impl PolicyStore {
 pub struct XdsStore {
 	pub targets: TargetStore,
 	pub policies: PolicyStore,
-	pub listener: Listener,
+	pub listener: inbound::Listener,
 }
 
 impl XdsStore {
-	pub fn new(listener: Listener) -> Self {
+	pub fn new(listener: inbound::Listener) -> Self {
 		Self {
 			targets: TargetStore::new(),
 			policies: PolicyStore::new(),
 			listener,
 		}
 	}
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Config {
+	pub xds_address: String,
+	pub metadata: HashMap<String, String>,
+	pub listener: inbound::Listener,
 }

@@ -1,7 +1,8 @@
-use crate::backend::{BackendAuth, build};
+use crate::backend::BackendAuth;
 use crate::metrics::Recorder;
 use crate::rbac;
-use crate::xds::{OpenAPISchema, Target, TargetSpec, XdsStore};
+use crate::outbound::{OpenAPISchema, Target, TargetSpec};
+use crate::xds::XdsStore;
 use http::{HeaderMap, HeaderValue, Method, header::AUTHORIZATION};
 use itertools::Itertools;
 use rmcp::RoleClient;
@@ -472,7 +473,7 @@ impl ConnectionPool {
 				let url = format!("{}://{}:{}{}", scheme, host, port, path);
 				let transport = match backend_auth.clone() {
 					Some(backend_auth) => {
-						let backend_auth = build(backend_auth).await;
+						let backend_auth = backend_auth.build().await;
 						let token = backend_auth.get_token().await?;
 						let mut headers = HeaderMap::new();
 						let auth_value = HeaderValue::from_str(token.as_str()).unwrap();

@@ -1,9 +1,10 @@
 pub mod admin;
 pub mod authn;
 pub mod backend;
-pub mod config;
 pub mod drain;
+pub mod inbound;
 pub mod metrics;
+pub mod outbound;
 pub mod proxyprotocol;
 pub mod rbac;
 pub mod relay;

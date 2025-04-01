@@ -3,7 +3,9 @@ use tracing::{debug, info, trace};
 
 use crate::rbac;
 use crate::relay;
-use crate::xds::{Listener, Target, XdsStore as ProxyState};
+use crate::inbound::Listener;
+use crate::outbound::Target;
+use crate::xds::XdsStore as ProxyState;
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -20,7 +22,7 @@ pub async fn run_local_client(
 	cfg: &StaticConfig,
 	state_ref: Arc<std::sync::RwLock<ProxyState>>,
 	metrics: Arc<relay::metrics::Metrics>,
-) -> Result<(), crate::xds::ServingError> {
+) -> Result<(), crate::inbound::ServingError> {
 	debug!(
 		"load local config: {}",
 		serde_yaml::to_string(&cfg).unwrap_or_default()

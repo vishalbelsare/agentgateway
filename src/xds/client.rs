@@ -229,12 +229,10 @@ impl State {
 }
 
 impl Config {
-	pub fn new(config: Arc<crate::config::Config>) -> Config {
+	pub fn new(config: Arc<super::Config>) -> Config {
 		Config {
 			address: config
-				.xds_address
-				.clone()
-				.expect("xds_address must be set to use xds"),
+				.xds_address.clone(),
 			handlers: HashMap::new(),
 			initial_requests: Vec::new(),
 			on_demand: false,

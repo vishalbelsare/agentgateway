@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use mcp_gw::config::Config as XdsConfig;
+use mcp_gw::xds::Config as XdsConfig;
 use mcp_gw::r#static::{StaticConfig, run_local_client};
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};

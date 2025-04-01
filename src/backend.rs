@@ -23,13 +23,14 @@ pub enum BackendAuthConfig {
 	AWS,
 }
 
-pub async fn build(auth_impl: BackendAuthConfig) -> impl BackendAuth {
-	match auth_impl {
-		#[cfg(feature = "gcp")]
-		BackendAuthConfig::GCP => gcp::GCPBackend::new().await.unwrap(),
-		#[cfg(feature = "aws")]
-		BackendAuthConfig::AWS => {
-			panic!("AWS backend not implemented")
-		},
+impl BackendAuthConfig {
+	pub async fn build(&self) -> impl BackendAuth {
+		match self {
+			BackendAuthConfig::GCP => gcp::GCPBackend::new().await.unwrap(),
+      #[cfg(feature = "aws")]
+			BackendAuthConfig::AWS => {
+				panic!("AWS backend not implemented")
+			},
+		}
 	}
 }
