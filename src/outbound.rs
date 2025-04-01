@@ -1,6 +1,7 @@
-use crate::backend;
 use openapiv3::Paths;
 use serde::{Deserialize, Serialize};
+
+pub mod backend;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Target {
