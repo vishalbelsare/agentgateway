@@ -8,7 +8,7 @@ use rmcp::RoleClient;
 use rmcp::serve_client;
 use rmcp::service::RunningService;
 use rmcp::transport::child_process::TokioChildProcess;
-use rmcp::transport::sse::SseTransport;
+use rmcp::transport::sse::{ReqwestSseClient, SseTransport};
 use rmcp::{
 	Error as McpError, RoleServer, ServerHandler, model::CallToolRequestParam, model::Tool, model::*,
 	service::RequestContext,
@@ -481,11 +481,12 @@ impl ConnectionPool {
 							.default_headers(headers)
 							.build()
 							.unwrap();
-						SseTransport::start_with_client(url.as_str(), client).await?
+						let client = ReqwestSseClient::new_with_client(url.as_str(), client).await?;
+						SseTransport::start_with_client(client).await?
 					},
 					None => {
-						let client = reqwest::Client::new();
-						SseTransport::start_with_client(url.as_str(), client).await?
+						let client = ReqwestSseClient::new(url.as_str())?;
+						SseTransport::start_with_client(client).await?
 					},
 				};
 
@@ -770,13 +771,12 @@ impl OpenAPIHandler {
 						schema.insert("properties".to_string(), json!(schema_props));
 						let tool = Tool {
 							name: Cow::Owned(name.clone()),
-							description: Cow::Owned(
+							description: Some(Cow::Owned(
 								op.description
 									.as_ref()
 									.unwrap_or_else(|| op.summary.as_ref().unwrap_or(&name))
 									.to_string(),
-							),
-							// input_schema: Arc::new(Default::default()),
+							)),
 							input_schema: Arc::new(schema),
 						};
 						let upstream = UpstreamOpenAPICall {

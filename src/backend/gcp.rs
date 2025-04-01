@@ -17,8 +17,4 @@ impl crate::backend::BackendAuth for GCPBackend {
 	async fn get_token(&self) -> Result<String, anyhow::Error> {
 		Ok(self.credentials.get_token().await?.token)
 	}
-
-	// async fn get_headers(&self) -> Result<Vec<(HeaderName, HeaderValue)>, BackendAuthError> {
-	//   Ok(self.credentials.get_headers().await?)
-	// }
 }

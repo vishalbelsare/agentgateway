@@ -32,23 +32,12 @@
   ],
   "targets": [
     {
-      "name": "git",
-      "spec": {
-        "type": "stdio",
-        "cmd": "uvx",
-        "args": [
-          "mcp-server-git"
-        ]
-      }
-    },
-    {
       "name": "everything",
       "spec": {
-        "type": "stdio",
-        "cmd": "npx",
-        "args": [
-          "@modelcontextprotocol/server-everything"
-        ]
+        "type": "sse",
+        "host": "localhost",
+        "port": 8002,
+        "path": "/sse"
       }
     }
   ]
