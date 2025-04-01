@@ -9,5 +9,11 @@ message Target {
   string host = 2;
   // The port of the target.
   uint32 port = 3;
-  string path =4;
+  string path = 4;
+  // The backend auth config of the target.
+  BackendAuthConfig backend_auth = 5;
+}
+
+message BackendAuthConfig {
+  string type = 1;
 }

@@ -1,13 +1,14 @@
+use crate::backend::{BackendAuth, build};
 use crate::metrics::Recorder;
 use crate::rbac;
 use crate::xds::{OpenAPISchema, Target, TargetSpec, XdsStore};
-use http::Method;
+use http::{HeaderMap, HeaderValue, Method, header::AUTHORIZATION};
 use itertools::Itertools;
 use rmcp::RoleClient;
 use rmcp::serve_client;
 use rmcp::service::RunningService;
 use rmcp::transport::child_process::TokioChildProcess;
-use rmcp::transport::sse::SseTransport;
+use rmcp::transport::sse::{ReqwestSseClient, SseTransport};
 use rmcp::{
 	Error as McpError, RoleServer, ServerHandler, model::CallToolRequestParam, model::Tool, model::*,
 	service::RequestContext,
@@ -452,7 +453,12 @@ impl ConnectionPool {
 	async fn connect(&self, target: &Target) -> Result<Arc<RwLock<UpstreamTarget>>, anyhow::Error> {
 		tracing::trace!("connecting to target: {}", target.name);
 		let transport: UpstreamTarget = match &target.spec {
-			TargetSpec::Sse { host, port, path } => {
+			TargetSpec::Sse {
+				host,
+				port,
+				path,
+				backend_auth,
+			} => {
 				tracing::trace!("starting sse transport for target: {}", target.name);
 				let path = match path.as_str() {
 					"" => "/sse",
@@ -464,8 +470,26 @@ impl ConnectionPool {
 				};
 
 				let url = format!("{}://{}:{}{}", scheme, host, port, path);
+				let transport = match backend_auth.clone() {
+					Some(backend_auth) => {
+						let backend_auth = build(backend_auth).await;
+						let token = backend_auth.get_token().await?;
+						let mut headers = HeaderMap::new();
+						let auth_value = HeaderValue::from_str(token.as_str()).unwrap();
+						headers.insert(AUTHORIZATION, auth_value);
+						let client = reqwest::Client::builder()
+							.default_headers(headers)
+							.build()
+							.unwrap();
+						let client = ReqwestSseClient::new_with_client(url.as_str(), client).await?;
+						SseTransport::start_with_client(client).await?
+					},
+					None => {
+						let client = ReqwestSseClient::new(url.as_str())?;
+						SseTransport::start_with_client(client).await?
+					},
+				};
 
-				let transport = SseTransport::start(url.as_str()).await?;
 				UpstreamTarget::Mcp(serve_client((), transport).await?)
 			},
 			TargetSpec::Stdio { cmd, args } => {
@@ -747,13 +771,12 @@ impl OpenAPIHandler {
 						schema.insert("properties".to_string(), json!(schema_props));
 						let tool = Tool {
 							name: Cow::Owned(name.clone()),
-							description: Cow::Owned(
+							description: Some(Cow::Owned(
 								op.description
 									.as_ref()
 									.unwrap_or_else(|| op.summary.as_ref().unwrap_or(&name))
 									.to_string(),
-							),
-							// input_schema: Arc::new(Default::default()),
+							)),
 							input_schema: Arc::new(schema),
 						};
 						let upstream = UpstreamOpenAPICall {

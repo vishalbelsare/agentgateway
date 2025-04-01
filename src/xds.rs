@@ -22,6 +22,7 @@ use crate::xds;
 use openapiv3::Paths;
 use std::collections::HashMap;
 
+use crate::backend;
 use crate::sse::App as SseApp;
 use serde::{Deserialize, Serialize};
 
@@ -192,6 +193,7 @@ pub enum TargetSpec {
 		host: String,
 		port: u32,
 		path: String,
+		backend_auth: Option<backend::BackendAuthConfig>,
 	},
 	#[serde(rename = "stdio")]
 	Stdio { cmd: String, args: Vec<String> },
@@ -217,6 +219,7 @@ impl From<&XdsTarget> for Target {
 					host: value.host.clone(),
 					port: value.port,
 					path: value.path.clone(),
+					backend_auth: Some(backend::BackendAuthConfig::GCP),
 				}
 			},
 		}

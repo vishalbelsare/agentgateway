@@ -123,7 +123,7 @@ async fn fetch_jwks(remote: &JwksRemoteSource) -> Result<Jwk, JwkError> {
 	Ok(jwk)
 }
 
-// MutableKey is a wrapper around DecodingKey that allows us to the key atomically
+// MutableKey is a wrapper around DecodingKey that allows us to update the key atomically
 pub struct MutableKey {
 	key: DecodingKey,
 }

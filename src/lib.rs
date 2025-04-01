@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod authn;
+pub mod backend;
 pub mod config;
 pub mod drain;
 pub mod metrics;
