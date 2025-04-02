@@ -8,14 +8,19 @@
      <a href="https://discord.gg/BdJpzaPjHv">
       <img src="https://img.shields.io/discord/1346225185166065826?style=flat&label=Join%20Discord&color=6D28D9" alt="Discord">
     </a>
+    <a href="https://github.com/mcp-proxy/mcp-proxy/releases">
+      <img src="https://img.shields.io/github/v/release/mcp-proxy/mcp-proxy?style=flat&label=Latest%20Release&color=6D28D9" alt="Latest Release">
+    </a>
+    <a href="https://github.com/mcp-proxy/mcp-proxy/actions/workflows/pull_request.yml">
+      <img src="https://github.com/mcp-proxy/mcp-proxy/actions/workflows/pull_request.yml/badge.svg?branch=main" alt="Pull Request">
+    </a>
+    <a href="https://github.com/mcp-proxy/mcp-proxy/actions/workflows/release.yml">
+      <img src="https://github.com/mcp-proxy/mcp-proxy/actions/workflows/release.yml/badge.svg" alt="Release">
+    </a>
   </div>
 </div>
 
 ---
-
-
-![Build Status](https://github.com/mcp-proxy/mcp-proxy/actions/workflows/pull_request.yml/badge.svg?branch=main)
-![Release Status](https://github.com/4t145/rmcp/actions/workflows/release.yml/badge.svg)
 
 **mcp-proxy** is a full-featured enterprise-grade proxy for the MCP protocol.
 
