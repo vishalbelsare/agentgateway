@@ -1,4 +1,18 @@
-# mcp-proxy
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mcp-proxy/mcp-proxy/refs/heads/main/img/mcp-text-light.svg" alt="mcp-proxy" width="400">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/mcp-proxy/mcp-proxy/refs/heads/main/img/mcp-text-dark.svg" alt="mcp-proxy" width="400">
+    <img alt="kagent" src="https://raw.githubusercontent.com/kagent-dev/kagent/main/img/icon-light.svg">
+  </picture>
+  <div>
+     <a href="https://discord.gg/BdJpzaPjHv">
+      <img src="https://img.shields.io/discord/1346225185166065826?style=flat&label=Join%20Discord&color=6D28D9" alt="Discord">
+    </a>
+  </div>
+</div>
+
+---
+
 
 ![Build Status](https://github.com/mcp-proxy/mcp-proxy/actions/workflows/pull_request.yml/badge.svg?branch=main)
 ![Release Status](https://github.com/4t145/rmcp/actions/workflows/release.yml/badge.svg)
