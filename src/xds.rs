@@ -186,7 +186,7 @@ impl From<&XdsTarget> for outbound::Target {
 					host: value.host.clone(),
 					port: value.port,
 					path: value.path.clone(),
-					backend_auth: Some(backend::BackendAuthConfig::GCP),
+					backend_auth: None,
 				}
 			},
 		}
