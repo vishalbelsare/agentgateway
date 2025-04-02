@@ -26,6 +26,8 @@
 - [x] **Highly performant:** mcp-proxy is written in rust, and is designed from the ground up to handle any scale you can throw at it.
 - [x] **Security First:** mcp-proxy includes a robust MCP focused RBAC system.
 - [x] **Multi Tenant:** mcp-proxy supports multiple tenants, each with their own set of resources and users.
+- [x] **Dynamic:** mcp-proxy supports dynamic configuration updates via xDS, without any downtime.
+- [x] **Run Anywhere:** mcp-proxy can run anywhere, from a single machine to a large scale multi-tenant deployment.
 
 <br>
 
