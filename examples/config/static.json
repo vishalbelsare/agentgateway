@@ -34,10 +34,11 @@
     {
       "name": "everything",
       "spec": {
-        "type": "sse",
-        "host": "localhost",
-        "port": 8002,
-        "path": "/sse"
+        "type": "stdio",
+        "cmd": "npx",
+        "args": [
+          "@modelcontextprotocol/server-everything"
+        ]
       }
     }
   ]

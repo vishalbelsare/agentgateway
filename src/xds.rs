@@ -19,7 +19,6 @@ use crate::strng::Strng;
 use crate::xds;
 use std::collections::HashMap;
 
-use crate::backend;
 use crate::inbound;
 use crate::outbound;
 use serde::{Deserialize, Serialize};

@@ -1,21 +1,21 @@
 use anyhow::Result;
 use clap::Parser;
-use mcp_gw::xds::Config as XdsConfig;
-use mcp_gw::r#static::{StaticConfig, run_local_client};
+use mcp_proxy::xds::Config as XdsConfig;
+use mcp_proxy::r#static::{StaticConfig, run_local_client};
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
 use tokio::task::JoinSet;
 use tracing_subscriber::{self, EnvFilter};
 
-use mcp_gw::admin::App as AdminApp;
-use mcp_gw::metrics::App as MetricsApp;
-use mcp_gw::relay;
-use mcp_gw::xds;
-use mcp_gw::xds::ProxyStateUpdater;
-use mcp_gw::xds::XdsStore as ProxyState;
-use mcp_gw::xds::types::mcp::kgateway_dev::rbac::Config as XdsRbac;
-use mcp_gw::xds::types::mcp::kgateway_dev::target::Target as XdsTarget;
+use mcp_proxy::admin::App as AdminApp;
+use mcp_proxy::metrics::App as MetricsApp;
+use mcp_proxy::relay;
+use mcp_proxy::xds;
+use mcp_proxy::xds::ProxyStateUpdater;
+use mcp_proxy::xds::XdsStore as ProxyState;
+use mcp_proxy::xds::types::mcp::kgateway_dev::rbac::Config as XdsRbac;
+use mcp_proxy::xds::types::mcp::kgateway_dev::target::Target as XdsTarget;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {

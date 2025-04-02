@@ -1,5 +1,5 @@
 [package]
-name = "mcp-gw"
+name = "mcp-proxy"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
@@ -70,6 +70,6 @@ path = "src/lib.rs"
 bench = false
 
 [[bin]]
-name = "mcp-gw"
+name = "mcp-proxy"
 path = "src/main.rs"
 bench = false

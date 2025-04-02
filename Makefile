@@ -1,13 +1,13 @@
 # Image configuration
 DOCKER_REGISTRY ?= ghcr.io
-DOCKER_REPO ?= mcp-gw/mcp-gw
-IMAGE_NAME ?= gw
+DOCKER_REPO ?= mcp-proxy
+IMAGE_NAME ?= mcp-proxy
 VERSION ?= $(shell git describe --tags --always --dirty)
 IMAGE_TAG ?= $(VERSION)
 IMAGE_FULL_NAME ?= $(DOCKER_REGISTRY)/$(DOCKER_REPO)/$(IMAGE_NAME):$(IMAGE_TAG)
 DOCKER_BUILDER ?= docker
 DOCKER_BUILD_ARGS ?=
-KIND_CLUSTER_NAME ?= mcp-gw
+KIND_CLUSTER_NAME ?= mcp-proxy
 
 # docker
 .PHONY: docker

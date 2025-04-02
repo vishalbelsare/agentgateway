@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mcp-gw
+  name: mcp-proxy
 spec:
   selector:
     matchLabels:
-      app: mcp-gw
+      app: mcp-proxy
   template:
     metadata:
       labels:
-        app: mcp-gw
+        app: mcp-proxy
     spec:
       containers:
-        - name: mcp-gw
-          image: localhost:5000/mcp-gw:latest
+        - name: mcp-proxy
+          image: localhost:5000/mcp-proxy:latest
           command:
-            - mcp-gw
+            - mcp-proxy
             - --config=/config/config.yaml
           volumeMounts:
             - name: config-volume
@@ -23,15 +23,15 @@ spec:
       volumes:
         - name: config-volume
           configMap:
-            name: mcp-gw-config
+            name: mcp-proxy-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: mcp-gw
+  name: mcp-proxy
 spec:
   selector:
-    app: mcp-gw
+    app: mcp-proxy
   ports:
     - protocol: TCP
       port: 80
@@ -41,7 +41,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: mcp-gw-config
+  name: mcp-proxy-config
 data:
   config.yaml: |
     listener:
