@@ -15,11 +15,13 @@
       <img src="https://github.com/mcp-proxy/mcp-proxy/actions/workflows/release.yml/badge.svg" alt="Release">
     </a>
   </div>
+  <div>
+    The first <strong>full featured</strong>, <strong>enterprise-grade</strong> proxy for the MCP protocol.
+  </div>
 </div>
 
 ---
 
-**mcp-proxy** is a full-featured enterprise-grade proxy for the MCP protocol.
 
 **Key Features:**
 
