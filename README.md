@@ -28,7 +28,8 @@
 - [x] **Multi Tenant:** mcp-proxy supports multiple tenants, each with their own set of resources and users.
 - [x] **Dynamic:** mcp-proxy supports dynamic configuration updates via xDS, without any downtime.
 - [x] **Run Anywhere:** mcp-proxy can run anywhere, from a single machine to a large scale multi-tenant deployment.
-
+- [x] **Legacy API Support:** mcp-proxy can transform legacy APIs into MCP resources. Currently supports OpenAPI. (gRPC coming soon)
+- [x] **Open Source:** mcp-proxy is open source, and licensed under the [Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0).
 <br>
 
 
