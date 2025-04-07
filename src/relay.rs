@@ -53,6 +53,7 @@ impl ServerHandler for Relay {
 		ServerInfo {
             protocol_version: ProtocolVersion::V_2024_11_05,
             capabilities: ServerCapabilities {
+                completions: None,
                 experimental: None,
                 logging: None,
                 prompts: Some(PromptsCapability::default()),
@@ -71,7 +72,7 @@ impl ServerHandler for Relay {
 	#[instrument(level = "debug", skip_all)]
 	async fn list_resources(
 		&self,
-		request: PaginatedRequestParam,
+		request: Option<PaginatedRequestParam>,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListResourcesResult, McpError> {
 		let pool = self.pool.read().await;
@@ -101,7 +102,7 @@ impl ServerHandler for Relay {
 	#[instrument(level = "debug", skip_all)]
 	async fn list_resource_templates(
 		&self,
-		request: PaginatedRequestParam,
+		request: Option<PaginatedRequestParam>,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListResourceTemplatesResult, McpError> {
 		let pool = self.pool.read().await;
@@ -143,7 +144,7 @@ impl ServerHandler for Relay {
 	#[instrument(level = "debug", skip_all)]
 	async fn list_prompts(
 		&self,
-		request: PaginatedRequestParam,
+		request: Option<PaginatedRequestParam>,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListPromptsResult, McpError> {
 		let pool = self.pool.read().await;
@@ -270,7 +271,7 @@ impl ServerHandler for Relay {
 	#[instrument(level = "debug", skip_all)]
 	async fn list_tools(
 		&self,
-		request: PaginatedRequestParam,
+		request: Option<PaginatedRequestParam>,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<ListToolsResult, McpError> {
 		// TODO: Use iterators
@@ -286,6 +287,7 @@ impl ServerHandler for Relay {
 						r.tools
 							.into_iter()
 							.map(|t| Tool {
+								annotations: None,
 								name: Cow::Owned(format!("{}:{}", name, t.name)),
 								description: t.description,
 								input_schema: t.input_schema,
@@ -588,7 +590,7 @@ impl From<UpstreamError> for ErrorData {
 impl UpstreamTarget {
 	async fn list_tools(
 		&self,
-		request: PaginatedRequestParam,
+		request: Option<PaginatedRequestParam>,
 	) -> Result<ListToolsResult, UpstreamError> {
 		match self {
 			UpstreamTarget::Mcp(m) => Ok(m.list_tools(request).await?),
@@ -614,7 +616,7 @@ impl UpstreamTarget {
 
 	async fn list_prompts(
 		&self,
-		request: PaginatedRequestParam,
+		request: Option<PaginatedRequestParam>,
 	) -> Result<ListPromptsResult, UpstreamError> {
 		match self {
 			UpstreamTarget::Mcp(m) => Ok(m.list_prompts(request).await?),
@@ -627,7 +629,7 @@ impl UpstreamTarget {
 
 	async fn list_resources(
 		&self,
-		request: PaginatedRequestParam,
+		request: Option<PaginatedRequestParam>,
 	) -> Result<ListResourcesResult, UpstreamError> {
 		match self {
 			UpstreamTarget::Mcp(m) => Ok(m.list_resources(request).await?),
@@ -640,7 +642,7 @@ impl UpstreamTarget {
 
 	async fn list_resource_templates(
 		&self,
-		request: PaginatedRequestParam,
+		request: Option<PaginatedRequestParam>,
 	) -> Result<ListResourceTemplatesResult, UpstreamError> {
 		match self {
 			UpstreamTarget::Mcp(m) => Ok(m.list_resource_templates(request).await?),
