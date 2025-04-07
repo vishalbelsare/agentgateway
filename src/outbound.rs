@@ -32,6 +32,17 @@ pub enum TargetSpec {
 		port: u32,
 		tools: Vec<(Tool, UpstreamOpenAPICall)>,
 	},
+  #[cfg(feature = "wasm")]
+  Wasm {
+    path: WasmPath,
+  }
+}
+
+#[cfg(feature = "wasm")]
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum WasmPath {
+  File(std::path::PathBuf),
+  Oci(String),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]

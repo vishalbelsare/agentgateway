@@ -514,6 +514,9 @@ impl ConnectionPool {
 					tools: tools.clone(),
 				})
 			},
+      TargetSpec::Wasm { path: _ } => {
+        panic!("Wasm transport not implemented");
+      }
 		};
 		let connection = Arc::new(RwLock::new(transport));
 		// We need to drop this lock quick
