@@ -12,8 +12,33 @@ This example will show you how to proxy the [Swagger Petstore](https://petstore3
 cargo run -- -f examples/openapi/config.json
 ```
 
-This will start the proxy on port 3000. Once it is running we can use the [mcpinspector](https://github.com/modelcontextprotocol/inspector) to try it out.
+Let's look at the config to understand what's going on. First off we have a listener, which tells the proxy how to listen for incoming requests/connections. In this case we're using the `sse` listener, which is a simple HTTP listener that listens on port 3000.
+```json
+  "listener": {
+    "sse": {  
+      "host": "0.0.0.0",
+      "port": 3000
+    }
+  }
+```
 
+Next we have a targets section, which tells the proxy how to proxy the incoming requests to the target. In this case we're proxying to the [Swagger Petstore](https://petstore3.swagger.io). In the future we will also support remote OpenAPI specs via URL.
+```json
+  "targets": [
+    {
+      "name": "petstore",
+      "openapi": {
+        "host": "petstore3.swagger.io",
+        "port": 443,
+        "schema": {
+          "file_path": "examples/openapi/openapi.json"
+        }
+      }
+    }
+  ]
+```
+
+Now that we have the proxy running, we can use the [mcpinspector](https://github.com/modelcontextprotocol/inspector) to try it out.
 ```bash
 npx @modelcontextprotocol/inspector
 ```
