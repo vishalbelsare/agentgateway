@@ -1,9 +1,11 @@
 use crate::backend::BackendAuth;
 use crate::metrics::Recorder;
-use crate::outbound::{Target, TargetSpec, UpstreamOpenAPICall};
+use crate::outbound::openapi;
+use crate::outbound::{Target, TargetSpec};
 use crate::rbac;
 use crate::xds::XdsStore;
-use http::{HeaderMap, HeaderValue, Method, header::AUTHORIZATION};
+use http::HeaderName;
+use http::{HeaderMap, HeaderValue, header::AUTHORIZATION};
 use itertools::Itertools;
 use rmcp::RoleClient;
 use rmcp::serve_client;
@@ -23,24 +25,22 @@ use tracing::instrument;
 
 pub mod metrics;
 
+lazy_static::lazy_static! {
+	static ref DEFAULT_ID: rbac::Identity = rbac::Identity::default();
+}
+
 #[derive(Clone)]
 pub struct Relay {
 	state: Arc<std::sync::RwLock<XdsStore>>,
 	pool: Arc<RwLock<ConnectionPool>>,
-	id: rbac::Identity,
 	metrics: Arc<metrics::Metrics>,
 }
 
 impl Relay {
-	pub fn new(
-		state: Arc<std::sync::RwLock<XdsStore>>,
-		id: rbac::Identity,
-		metrics: Arc<metrics::Metrics>,
-	) -> Self {
+	pub fn new(state: Arc<std::sync::RwLock<XdsStore>>, metrics: Arc<metrics::Metrics>) -> Self {
 		Self {
 			state: state.clone(),
 			pool: Arc::new(RwLock::new(ConnectionPool::new(state.clone()))),
-			id,
 			metrics,
 		}
 	}
@@ -201,10 +201,14 @@ impl ServerHandler for Relay {
 			&rbac::ResourceType::Resource {
 				id: request.uri.to_string(),
 			},
-			&self.id,
+			match _context.extensions.get::<rbac::Identity>() {
+				Some(id) => id,
+				None => &DEFAULT_ID,
+			},
 		) {
 			return Err(McpError::invalid_request("not allowed", None));
 		}
+
 		let uri = request.uri.to_string();
 		let (service_name, resource) = uri.split_once(':').unwrap();
 		let pool = self.pool.read().await;
@@ -242,10 +246,14 @@ impl ServerHandler for Relay {
 			&rbac::ResourceType::Prompt {
 				id: request.name.to_string(),
 			},
-			&self.id,
+			match _context.extensions.get::<rbac::Identity>() {
+				Some(id) => id,
+				None => &DEFAULT_ID,
+			},
 		) {
 			return Err(McpError::invalid_request("not allowed", None));
 		}
+
 		let prompt_name = request.name.to_string();
 		let (service_name, prompt) = prompt_name.split_once(':').unwrap();
 		let pool = self.pool.read().await;
@@ -329,12 +337,14 @@ impl ServerHandler for Relay {
 		request: CallToolRequestParam,
 		_context: RequestContext<RoleServer>,
 	) -> std::result::Result<CallToolResult, McpError> {
-		tracing::trace!("calling tool: {:?}", request);
 		if !self.state.read().unwrap().policies.validate(
 			&rbac::ResourceType::Tool {
 				id: request.name.to_string(),
 			},
-			&self.id,
+			match _context.extensions.get::<rbac::Identity>() {
+				Some(id) => id,
+				None => &DEFAULT_ID,
+			},
 		) {
 			return Err(McpError::invalid_request("not allowed", None));
 		}
@@ -460,6 +470,7 @@ impl ConnectionPool {
 				port,
 				path,
 				backend_auth,
+				headers,
 			} => {
 				tracing::trace!("starting sse transport for target: {}", target.name);
 				let path = match path.as_str() {
@@ -476,11 +487,17 @@ impl ConnectionPool {
 					Some(backend_auth) => {
 						let backend_auth = backend_auth.build().await;
 						let token = backend_auth.get_token().await?;
-						let mut headers = HeaderMap::new();
-						let auth_value = HeaderValue::from_str(token.as_str()).unwrap();
-						headers.insert(AUTHORIZATION, auth_value);
+						let mut upstream_headers = HeaderMap::new();
+						let auth_value = HeaderValue::from_str(token.as_str())?;
+						upstream_headers.insert(AUTHORIZATION, auth_value);
+						for (key, value) in headers {
+							upstream_headers.insert(
+								HeaderName::from_bytes(key.as_bytes())?,
+								HeaderValue::from_str(value)?,
+							);
+						}
 						let client = reqwest::Client::builder()
-							.default_headers(headers)
+							.default_headers(upstream_headers)
 							.build()
 							.unwrap();
 						let client = ReqwestSseClient::new_with_client(url.as_str(), client).await?;
@@ -504,14 +521,21 @@ impl ConnectionPool {
 					.await?,
 				)
 			},
-			TargetSpec::OpenAPI { host, port, tools } => {
+			TargetSpec::OpenAPI(open_api) => {
 				tracing::info!("starting OpenAPI transport for target: {}", target.name);
 				let client = reqwest::Client::new();
 
-				UpstreamTarget::OpenAPI(OpenAPIHandler {
-					host: format!("http://{}:{}", host, port),
+				let scheme = match open_api.port {
+					443 => "https",
+					_ => "http",
+				};
+				UpstreamTarget::OpenAPI(openapi::Handler {
+					host: open_api.host.clone(),
 					client,
-					tools: tools.clone(),
+					tools: open_api.tools.clone(),
+					scheme: scheme.to_string(),
+					prefix: open_api.prefix.clone(),
+					port: open_api.port,
 				})
 			},
 		};
@@ -527,7 +551,7 @@ impl ConnectionPool {
 #[derive(Debug)]
 enum UpstreamTarget {
 	Mcp(RunningService<RoleClient, ()>),
-	OpenAPI(OpenAPIHandler),
+	OpenAPI(openapi::Handler),
 }
 
 enum UpstreamError {
@@ -679,45 +703,5 @@ impl UpstreamTarget {
 				})
 			},
 		}
-	}
-}
-
-#[derive(Debug)]
-struct OpenAPIHandler {
-	host: String,
-	client: reqwest::Client,
-	tools: Vec<(Tool, UpstreamOpenAPICall)>,
-}
-
-impl OpenAPIHandler {
-	#[instrument(
-    level = "debug",
-    skip_all,
-    fields(
-        name=%name,
-    ),
-  )]
-	async fn call_tool(&self, name: &str, args: Option<JsonObject>) -> Result<String, anyhow::Error> {
-		let (_, info) = self
-			.tools
-			.iter()
-			.find(|(t, _info)| t.name == name)
-			.ok_or_else(|| anyhow::anyhow!("tool {} not found", name))?;
-		let body = self
-			.client
-			.request(
-				Method::from_bytes(info.method.as_bytes()).unwrap(),
-				format!("{}{}", self.host, &info.path),
-			)
-			.json(args.as_ref().unwrap())
-			.send()
-			.await?
-			.text()
-			.await?;
-		Ok(body)
-	}
-
-	fn tools(&self) -> Vec<Tool> {
-		self.tools.clone().into_iter().map(|(t, _)| t).collect()
 	}
 }

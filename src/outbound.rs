@@ -1,12 +1,10 @@
-use openapiv3::Paths;
-use rmcp::model::JsonObject;
+use crate::xds::mcp::kgateway_dev::target::target::OpenApiTarget as XdsOpenAPITarget;
+use openapiv3::OpenAPI;
 use rmcp::model::Tool;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::Arc;
 pub mod backend;
+pub mod openapi;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Target {
@@ -20,6 +18,7 @@ pub enum TargetSpec {
 		host: String,
 		port: u32,
 		path: String,
+		headers: HashMap<String, String>,
 		backend_auth: Option<backend::BackendAuthConfig>,
 	},
 	Stdio {
@@ -27,90 +26,32 @@ pub enum TargetSpec {
 		args: Vec<String>,
 		env: HashMap<String, String>,
 	},
-	OpenAPI {
-		host: String,
-		port: u32,
-		tools: Vec<(Tool, UpstreamOpenAPICall)>,
-	},
+	OpenAPI(OpenAPITarget),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct UpstreamOpenAPICall {
-	pub method: String, // TODO: Switch to Method, but will require getting rid of Serialize/Deserialize
-	pub path: String,
-	// todo: params
+pub struct OpenAPITarget {
+	pub host: String,
+	pub prefix: String,
+	pub port: u16,
+	pub tools: Vec<(Tool, openapi::UpstreamOpenAPICall)>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub struct OpenAPISchema {
-	// The crate OpenAPI type requires a lot more, we only need paths for now so use only a subset of it.
-	pub paths: Paths,
-}
+impl TryFrom<XdsOpenAPITarget> for OpenAPITarget {
+	type Error = openapi::ParseError;
 
-pub fn parse_openapi_schema(schema: &OpenAPISchema) -> Vec<(Tool, UpstreamOpenAPICall)> {
-	schema
-		.paths
-		.iter()
-		.flat_map(|(path, path_info)| {
-			let item = path_info.as_item().unwrap();
-			item
-				.iter()
-				.map(|(method, op)| {
-					let name = op.operation_id.clone().expect("TODO");
-					let props: Vec<_> = op
-						.parameters
-						.iter()
-						.map(|p| {
-							let item = dbg!(p).as_item().unwrap();
-							let p = dbg!(item.parameter_data_ref());
-							let mut schema = JsonObject::new();
-							if let openapiv3::ParameterSchemaOrContent::Schema(openapiv3::ReferenceOr::Item(s)) =
-								&p.format
-							{
-								schema = serde_json::to_value(s)
-									.expect("TODO")
-									.as_object()
-									.expect("TODO")
-									.clone();
-							}
-							if let Some(desc) = &p.description {
-								schema.insert("description".to_string(), json!(desc));
-							}
-
-							(p.name.clone(), schema, p.required)
-						})
-						.collect();
-					let mut schema = JsonObject::new();
-					schema.insert("type".to_string(), json!("object"));
-					let required: Vec<String> = props
-						.iter()
-						.flat_map(|(name, _, req)| if *req { Some(name.clone()) } else { None })
-						.collect();
-					schema.insert("required".to_string(), json!(required));
-					let mut schema_props = JsonObject::new();
-					for (name, s, _) in props {
-						schema_props.insert(name, json!(s));
-					}
-					schema.insert("properties".to_string(), json!(schema_props));
-					let tool = Tool {
-            annotations: None,
-						name: Cow::Owned(name.clone()),
-						description: Some(Cow::Owned(
-							op.description
-								.as_ref()
-								.unwrap_or_else(|| op.summary.as_ref().unwrap_or(&name))
-								.to_string(),
-						)),
-						input_schema: Arc::new(schema),
-					};
-					let upstream = UpstreamOpenAPICall {
-						// method: Method::from_bytes(method.as_ref()).expect("todo"),
-						method: method.to_string(),
-						path: path.clone(),
-					};
-					(tool, upstream)
-				})
-				.collect::<Vec<_>>()
+	fn try_from(value: XdsOpenAPITarget) -> Result<Self, Self::Error> {
+		let schema = value.schema.ok_or(openapi::ParseError::MissingSchema)?;
+		let schema_bytes = openapi::resolve_local_data_source(&schema)?;
+		let schema: OpenAPI =
+			serde_json::from_slice(&schema_bytes).map_err(openapi::ParseError::SerdeError)?;
+		let tools = openapi::parse_openapi_schema(&schema)?;
+		let prefix = openapi::get_server_prefix(&schema)?;
+		Ok(OpenAPITarget {
+			host: value.host.clone(),
+			prefix,
+			port: value.port as u16, // TODO: check if this is correct
+			tools,
 		})
-		.collect()
+	}
 }

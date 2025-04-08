@@ -11,8 +11,9 @@ pub use metrics::*;
 pub use types::*;
 
 use xds::mcp::kgateway_dev::rbac::Config as XdsRbac;
-use xds::mcp::kgateway_dev::target::Target as XdsTarget;
+use xds::mcp::kgateway_dev::target::local_data_source::Source as XdsSource;
 use xds::mcp::kgateway_dev::target::target::Target as XdsTargetSpec;
+use xds::mcp::kgateway_dev::target::{LocalDataSource, Target as XdsTarget};
 
 use self::envoy::service::discovery::v3::DeltaDiscoveryRequest;
 use crate::rbac;
@@ -104,7 +105,7 @@ impl ProxyStateUpdateMutator {
         fields(name=%target.name),
     )]
 	pub fn insert_target(&self, state: &mut XdsStore, target: XdsTarget) -> anyhow::Result<()> {
-		let target = outbound::Target::try_from(&target)
+		let target = outbound::Target::try_from(target)
 			.map_err(|e| anyhow::anyhow!("failed to parse target: {e}"))?;
 		// TODO: This is a hack
 		// TODO: Separate connection/LB from insertion
@@ -182,15 +183,16 @@ pub enum ParseError {
 	InvalidSchema,
 }
 
-impl TryFrom<&XdsTarget> for outbound::Target {
+impl TryFrom<XdsTarget> for outbound::Target {
 	type Error = ParseError;
-	fn try_from(value: &XdsTarget) -> Result<Self, Self::Error> {
-		let target = value.target.as_ref().ok_or(ParseError::MissingFields)?;
+	fn try_from(value: XdsTarget) -> Result<Self, Self::Error> {
+		let target = value.target.ok_or(ParseError::MissingFields)?;
 		let spec = match target {
 			XdsTargetSpec::Sse(sse) => outbound::TargetSpec::Sse {
 				host: sse.host.clone(),
 				port: sse.port,
 				path: sse.path.clone(),
+				headers: sse.headers.clone(),
 				backend_auth: None,
 			},
 			XdsTargetSpec::Stdio(stdio) => outbound::TargetSpec::Stdio {
@@ -198,21 +200,30 @@ impl TryFrom<&XdsTarget> for outbound::Target {
 				args: stdio.args.clone(),
 				env: stdio.env.clone(),
 			},
-			XdsTargetSpec::Openapi(openapi) => outbound::TargetSpec::OpenAPI {
-				host: openapi.host.clone(),
-				port: openapi.port,
-				tools: {
-					let struct_schema = openapi.schema.clone();
-					let schema: outbound::OpenAPISchema =
-						serde_json::from_slice(&struct_schema).map_err(|_| ParseError::InvalidSchema)?;
-					outbound::parse_openapi_schema(&schema)
-				},
-			},
+			XdsTargetSpec::Openapi(openapi) => outbound::TargetSpec::OpenAPI(
+				outbound::OpenAPITarget::try_from(openapi).map_err(|_| ParseError::InvalidSchema)?,
+			),
 		};
 		Ok(outbound::Target {
 			name: value.name.clone(),
 			spec,
 		})
+	}
+}
+
+pub fn resolve_local_data_source(
+	local_data_source: &LocalDataSource,
+) -> Result<Vec<u8>, ParseError> {
+	match local_data_source
+		.source
+		.as_ref()
+		.ok_or(ParseError::MissingFields)?
+	{
+		XdsSource::FilePath(file_path) => {
+			let file = std::fs::read(file_path).map_err(|_| ParseError::MissingFields)?;
+			Ok(file)
+		},
+		XdsSource::Inline(inline) => Ok(inline.clone()),
 	}
 }
 
