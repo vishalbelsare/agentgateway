@@ -558,18 +558,23 @@ impl Handler {
 		let mut path = info.path.clone();
 		// Substitute path parameters into the path template.
 		for (key, value) in &path_params {
-			// Ensure the value is a string before substitution.
-			if let Some(s_val) = value.as_str() {
-				path = path.replace(&format!("{{{}}}", key), s_val);
-			} else {
-				// Log a warning if a path parameter is not a string.
-				tracing::warn!(
-					"Path parameter '{}' for tool '{}' is not a string (value: {:?}), skipping substitution",
-					key,
-					name,
-					value
-				);
-			}
+
+      match value {
+        Value::String(s_val) => {
+          path = path.replace(&format!("{{{}}}", key), s_val);
+        }
+        Value::Number(n_val) => { 
+          path = path.replace(&format!("{{{}}}", key), n_val.to_string().as_str());
+        }
+        _ => {
+          tracing::warn!(
+            "Path parameter '{}' for tool '{}' is not a string (value: {:?}), skipping substitution",
+            key,
+            name,
+            value
+          );
+        }
+      }
 		}
 
 		let base_url = format!(
