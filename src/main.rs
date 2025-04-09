@@ -9,6 +9,7 @@ use tokio::task::JoinSet;
 use tracing_subscriber::{self, EnvFilter};
 
 use mcp_proxy::admin::App as AdminApp;
+use mcp_proxy::inbound;
 use mcp_proxy::metrics::App as MetricsApp;
 use mcp_proxy::proto::mcpproxy::dev::rbac::Config as XdsRbac;
 use mcp_proxy::proto::mcpproxy::dev::target::Target as XdsTarget;
@@ -17,6 +18,7 @@ use mcp_proxy::signal;
 use mcp_proxy::xds;
 use mcp_proxy::xds::ProxyStateUpdater;
 use mcp_proxy::xds::XdsStore as ProxyState;
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -51,6 +53,11 @@ async fn main() -> Result<()> {
 	let mut registry = Registry::default();
 
 	let args = Args::parse();
+
+	// TODO: Do this better
+	rustls::crypto::ring::default_provider()
+		.install_default()
+		.expect("failed to install ring provider");
 
 	let cfg: Config = match (args.file, args.config) {
 		(Some(filename), None) => {
@@ -88,7 +95,10 @@ async fn main() -> Result<()> {
 			let mut run_set = JoinSet::new();
 
 			let cfg_clone = cfg.clone();
-			let state = Arc::new(RwLock::new(ProxyState::new(cfg_clone.listener.clone())));
+			let listener = inbound::Listener::from_xds(cfg_clone.listener.clone())
+				.await
+				.unwrap();
+			let state = Arc::new(RwLock::new(ProxyState::new(listener)));
 
 			let relay_metrics = relay::metrics::Metrics::new(&mut registry);
 
@@ -123,7 +133,10 @@ async fn main() -> Result<()> {
 		Config::Xds(cfg) => {
 			let metrics = xds::metrics::Metrics::new(&mut registry);
 			let awaiting_ready = tokio::sync::watch::channel(()).0;
-			let state = Arc::new(RwLock::new(ProxyState::new(cfg.listener.clone())));
+			let listener = inbound::Listener::from_xds(cfg.listener.clone())
+				.await
+				.unwrap();
+			let state = Arc::new(RwLock::new(ProxyState::new(listener.clone())));
 			let state_clone = state.clone();
 			let updater = ProxyStateUpdater::new(state_clone);
 			let cfg_clone = cfg.clone();
@@ -153,8 +166,7 @@ async fn main() -> Result<()> {
 
 			let relay_metrics = relay::metrics::Metrics::new(&mut registry);
 			run_set.spawn(async move {
-				cfg
-					.listener
+				listener
 					.listen(state.clone(), Arc::new(relay_metrics))
 					.await
 					.map_err(|e| anyhow::anyhow!("error serving static listener: {:?}", e))

@@ -1,6 +1,13 @@
-use std::sync::Arc;
-
 use crate::authn;
+use crate::authn::JwtAuthenticator;
+use crate::proto;
+use crate::proto::mcpproxy::dev::listener::{
+	Listener as XdsListener,
+	listener::{
+		Listener as XdsListenerSpec, SseListener as XdsSseListener,
+		sse_listener::TlsConfig as XdsTlsConfig,
+	},
+};
 use crate::proxyprotocol;
 use crate::relay;
 use crate::signal;
@@ -8,10 +15,17 @@ use crate::sse::App as SseApp;
 use crate::xds;
 use rmcp::serve_server;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio_rustls::{
+	TlsAcceptor,
+	rustls::ServerConfig,
+	rustls::pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
+};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Serialize, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum Listener {
 	#[serde(rename = "sse")]
@@ -20,28 +34,102 @@ pub enum Listener {
 	Stdio,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+impl Listener {
+	pub async fn from_xds(value: XdsListener) -> Result<Self, anyhow::Error> {
+		Ok(match value.listener {
+			Some(XdsListenerSpec::Sse(sse)) => Listener::Sse(SseListener::from_xds(sse).await?),
+			Some(XdsListenerSpec::Stdio(_)) => Listener::Stdio,
+			_ => Listener::Stdio,
+		})
+	}
+}
+
+#[derive(Clone, Serialize, Debug)]
 
 pub struct SseListener {
 	host: String,
 	port: u32,
 	mode: Option<ListenerMode>,
-	authn: Option<Authn>,
+	authn: Option<JwtAuthenticator>,
 	tls: Option<TlsConfig>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+impl SseListener {
+	async fn from_xds(value: XdsSseListener) -> Result<Self, anyhow::Error> {
+		let tls = match value.tls {
+			Some(tls) => Some(from_xds_tls_config(tls)?),
+			None => None,
+		};
+		let authn = match value.authn {
+			Some(authn) => match authn.jwt {
+				Some(jwt) => Some(
+					JwtAuthenticator::new(&jwt)
+						.await
+						.map_err(|e| anyhow::anyhow!("error creating jwt authenticator: {:?}", e))?,
+				),
+				None => None,
+			},
+			None => None,
+		};
+		Ok(SseListener {
+			host: value.address,
+			port: value.port,
+			mode: None,
+			authn,
+			tls,
+		})
+	}
+}
+#[derive(Clone, Debug)]
 pub struct TlsConfig {
-	key_pem: Option<LocalDataSource>,
-	cert_pem: Option<LocalDataSource>,
+	pub(crate) inner: Arc<ServerConfig>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub enum LocalDataSource {
-	#[serde(rename = "file")]
-	File(String),
-	#[serde(rename = "inline")]
-	Inline(String),
+// TODO: Implement Serialize for TlsConfig
+impl Serialize for TlsConfig {
+	fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		todo!()
+	}
+}
+
+fn from_xds_tls_config(value: XdsTlsConfig) -> Result<TlsConfig, anyhow::Error> {
+	let cert_bytes = value
+		.cert_pem
+		.ok_or(anyhow::anyhow!("cert_pem is required"))?
+		.source
+		.ok_or(anyhow::anyhow!("cert_pem source is required"))?;
+	let key_bytes = value
+		.key_pem
+		.ok_or(anyhow::anyhow!("key_pem is required"))?
+		.source
+		.ok_or(anyhow::anyhow!("key_pem source is required"))?;
+	let cert = proto::resolve_local_data_source(&cert_bytes)?;
+	let key = proto::resolve_local_data_source(&key_bytes)?;
+	Ok(TlsConfig {
+		inner: rustls_server_config(key, cert)?,
+	})
+}
+
+fn rustls_server_config(
+	key: impl AsRef<Vec<u8>>,
+	cert: impl AsRef<Vec<u8>>,
+) -> Result<Arc<ServerConfig>, anyhow::Error> {
+	let key = PrivateKeyDer::from_pem_slice(key.as_ref())?;
+
+	let certs = CertificateDer::pem_slice_iter(cert.as_ref())
+		.map(|cert| cert.unwrap())
+		.collect();
+
+	let mut config = ServerConfig::builder()
+		.with_no_client_auth()
+		.with_single_cert(certs, key)?;
+
+	config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+
+	Ok(Arc::new(config))
 }
 
 #[derive(Debug)]
@@ -79,16 +167,8 @@ impl Listener {
 					})
 			},
 			Listener::Sse(sse_listener) => {
-				let listener =
-					tokio::net::TcpListener::bind(format!("{}:{}", sse_listener.host, sse_listener.port))
-						.await
-						.unwrap();
 				let authenticator = match &sse_listener.authn {
-					Some(authn) => match authn {
-						Authn::Jwt(jwt) => Arc::new(tokio::sync::RwLock::new(Some(
-							authn::JwtAuthenticator::new(jwt).await.unwrap(),
-						))),
-					},
+					Some(authn) => Arc::new(tokio::sync::RwLock::new(Some(authn.clone()))),
 					None => Arc::new(tokio::sync::RwLock::new(None)),
 				};
 
@@ -103,36 +183,71 @@ impl Listener {
 						.map_err(|e| anyhow::anyhow!("error syncing jwks: {:?}", e))
 				});
 
+				let socket_addr: SocketAddr = format!("{}:{}", sse_listener.host, sse_listener.port)
+					.as_str()
+					.parse()
+					.unwrap();
+				let listener = tokio::net::TcpListener::bind(socket_addr).await.unwrap();
+				let app = SseApp::new(state.clone(), metrics, authenticator);
+				let router = app.router();
+
+				info!("serving sse on {}:{}", sse_listener.host, sse_listener.port);
+				let child_token = ct.child_token();
+				match &sse_listener.tls {
+					Some(tls) => {
+						let tls_acceptor = TlsAcceptor::from(tls.inner.clone());
+						let axum_tls_acceptor = proxyprotocol::AxumTlsAcceptor::new(tls_acceptor);
+						let tls_listener = proxyprotocol::AxumTlsListener::new(
+							tls_listener::TlsListener::new(axum_tls_acceptor, listener),
+							socket_addr,
+							Some(&ListenerMode::Proxy) == sse_listener.mode.as_ref(),
+						);
+
+						let svc: axum::extract::connect_info::IntoMakeServiceWithConnectInfo<
+							axum::Router,
+							proxyprotocol::Address,
+						> = router.into_make_service_with_connect_info::<proxyprotocol::Address>();
+						run_set.spawn(async move {
+							axum::serve(tls_listener, svc)
+								.with_graceful_shutdown(async move {
+									child_token.cancelled().await;
+								})
+								.await
+								.map_err(ServingError::Sse)
+								.inspect_err(|e| {
+									tracing::error!("serving error: {:?}", e);
+								})
+								.map_err(|e| anyhow::anyhow!("serving error: {:?}", e))
+						});
+					},
+					None => {
+						let enable_proxy = Some(&ListenerMode::Proxy) == sse_listener.mode.as_ref();
+
+						let listener = proxyprotocol::Listener::new(listener, enable_proxy);
+						let svc: axum::extract::connect_info::IntoMakeServiceWithConnectInfo<
+							axum::Router,
+							proxyprotocol::Address,
+						> = router.into_make_service_with_connect_info::<proxyprotocol::Address>();
+						run_set.spawn(async move {
+							axum::serve(listener, svc)
+								.with_graceful_shutdown(async move {
+									child_token.cancelled().await;
+								})
+								.await
+								.map_err(ServingError::Sse)
+								.inspect_err(|e| {
+									tracing::error!("serving error: {:?}", e);
+								})
+								.map_err(|e| anyhow::anyhow!("serving error: {:?}", e))
+						});
+					},
+				}
+
 				run_set.spawn(async move {
 					let sig = signal::Shutdown::new();
 					sig.wait().await;
 					ct.cancel();
 					Ok(())
-				});
-
-				let app = SseApp::new(state.clone(), metrics, authenticator);
-				let router = app.router();
-
-				let enable_proxy = Some(&ListenerMode::Proxy) == sse_listener.mode.as_ref();
-
-				let listener = proxyprotocol::Listener::new(listener, enable_proxy);
-				let svc: axum::extract::connect_info::IntoMakeServiceWithConnectInfo<
-					axum::Router,
-					proxyprotocol::Address,
-				> = router.into_make_service_with_connect_info::<proxyprotocol::Address>();
-				info!("serving sse on {}:{}", sse_listener.host, sse_listener.port);
-				run_set.spawn(async move {
-					axum::serve(listener, svc)
-						.with_graceful_shutdown(async {
-							let sig = signal::Shutdown::new();
-							sig.wait().await;
-						})
-						.await
-						.map_err(ServingError::Sse)
-						.inspect_err(|e| {
-							tracing::error!("serving error: {:?}", e);
-						})
-						.map_err(|e| anyhow::anyhow!("serving error: {:?}", e))
 				});
 
 				while let Some(res) = run_set.join_next().await {
@@ -147,12 +262,6 @@ impl Listener {
 			},
 		}
 	}
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub enum Authn {
-	#[serde(rename = "jwt")]
-	Jwt(authn::JwtConfig),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
