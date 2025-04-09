@@ -12,6 +12,7 @@ fn main() -> Result<(), anyhow::Error> {
 		"proto/rbac.proto",
 		"proto/target.proto",
 		"proto/listener.proto",
+		"proto/common.proto",
 	]
 	.iter()
 	.map(|name| std::env::current_dir().unwrap().join(name))
@@ -57,6 +58,7 @@ fn main() -> Result<(), anyhow::Error> {
 			for line in String::from_utf8(output.stdout).unwrap().lines() {
 				// Each line looks like `mcp-proxy.dev.buildGitRevision=abc`
 				if let Some((key, value)) = line.split_once('=') {
+					#[allow(clippy::double_ended_iterator_last)]
 					let key = key.split('.').last().unwrap();
 					println!("cargo:rustc-env=MCPGW_BUILD_{key}={value}");
 				} else {
@@ -83,9 +85,10 @@ fn main() -> Result<(), anyhow::Error> {
 	pbjson_build::Builder::new()
 		.register_descriptors(&descriptor_set)?
 		.build(&[
-			".mcp.kgateway.dev.target.v1alpha1",
-			".mcp.kgateway.dev.rbac.v1alpha1",
-			".mcp.kgateway.dev.listener.v1alpha1",
+			".mcpproxy.dev.target",
+			".mcpproxy.dev.rbac",
+			".mcpproxy.dev.listener",
+			".mcpproxy.dev.common",
 		])?;
 
 	Ok(())
