@@ -1,5 +1,5 @@
 use crate::proto::aidp::dev::mcp::rbac::rule;
-use crate::proto::aidp::dev::mcp::rbac::{Config as XdsRuleSet, Rule as XdsRule};
+use crate::proto::aidp::dev::mcp::rbac::{Rule as XdsRule, RuleSet as XdsRuleSet};
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

@@ -40,7 +40,7 @@ message Rule {
 }
 
 // A configuration that defines a set of RBAC rules for a given listener
-message Config {
+message RuleSet {
   // The name of the RBAC configuration.
   string name = 1;
   // The namespace of the RBAC configuration.

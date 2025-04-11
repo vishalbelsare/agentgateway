@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::proto::aidp::dev::mcp::rbac::Config as Rbac;
+use crate::proto::aidp::dev::mcp::rbac::RuleSet as Rbac;
 use crate::proto::aidp::dev::mcp::target::Target;
 use crate::xds::XdsStore;
 use axum::{

@@ -3,7 +3,7 @@ use tracing::{debug, info, trace};
 
 use crate::inbound;
 use crate::proto::aidp::dev::mcp::listener::Listener as XdsListener;
-use crate::proto::aidp::dev::mcp::rbac::{Config as XdsRuleSet, Rule as XdsRule};
+use crate::proto::aidp::dev::mcp::rbac::{Rule as XdsRule, RuleSet as XdsRuleSet};
 use crate::proto::aidp::dev::mcp::target::Target as XdsTarget;
 use crate::relay;
 use crate::trcng;

@@ -15,7 +15,7 @@ use crate::proto;
 use crate::proto::aidp::dev::common::BackendAuth as XdsAuth;
 use crate::proto::aidp::dev::common::backend_auth::Auth as XdsAuthSpec;
 use crate::proto::aidp::dev::mcp::listener::Listener as XdsListener;
-use crate::proto::aidp::dev::mcp::rbac::Config as XdsRbac;
+use crate::proto::aidp::dev::mcp::rbac::RuleSet as XdsRbac;
 use crate::proto::aidp::dev::mcp::target::Target as XdsTarget;
 use crate::proto::aidp::dev::mcp::target::target::Target as XdsTargetSpec;
 use crate::rbac;

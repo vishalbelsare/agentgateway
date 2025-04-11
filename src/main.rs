@@ -11,7 +11,7 @@ use tracing_subscriber::{self, EnvFilter};
 use mcp_proxy::admin::App as AdminApp;
 use mcp_proxy::inbound;
 use mcp_proxy::metrics::App as MetricsApp;
-use mcp_proxy::proto::aidp::dev::mcp::rbac::Config as XdsRbac;
+use mcp_proxy::proto::aidp::dev::mcp::rbac::RuleSet as XdsRbac;
 use mcp_proxy::proto::aidp::dev::mcp::target::Target as XdsTarget;
 use mcp_proxy::relay;
 use mcp_proxy::signal;
