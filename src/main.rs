@@ -64,7 +64,11 @@ async fn main() -> Result<()> {
 	// Initialize logging
 	// Initialize the tracing subscriber with file and stdout logging
 	tracing_subscriber::fmt()
-		.with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
+		.with_env_filter(
+			EnvFilter::from_default_env()
+				.add_directive(tracing::Level::INFO.into())
+				.add_directive("rmcp=warn".parse()?),
+		)
 		.with_writer(std::io::stderr)
 		.with_ansi(false)
 		.init();
