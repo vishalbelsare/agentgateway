@@ -1,25 +1,28 @@
 {
   "type": "static",
   "tracing": {
-    "tracer":{
-      "Otlp": {
+    "tracer": {
+      "otlp": {
         "endpoint": "http://localhost:4317"
       }
     }
   },
-  "listener": {
-    "a2a": {
-      "address": "0.0.0.0",
-      "port": 3000
-    }
-  },
-  "targets": [
+  "listeners": [
     {
-      "name": "google_adk",
-      "a2a": {
+      "protocol": "A2A",
+      "sse": {
+        "address": "0.0.0.0",
+        "port": 3000
+      }
+    }
+  ],
+  "targets": {
+    "a2a": [
+      {
+        "name": "google_adk",
         "host": "127.0.0.1",
         "port": "10002"
       }
-    }
-  ]
+    ]
+  }
 }

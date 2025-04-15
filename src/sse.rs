@@ -1,4 +1,5 @@
 use crate::authn;
+use crate::inbound;
 use crate::relay;
 use crate::relay::Relay;
 use crate::trcng;
@@ -46,6 +47,7 @@ pub struct App {
 	metrics: Arc<relay::metrics::Metrics>,
 	authn: Arc<RwLock<Option<authn::JwtAuthenticator>>>,
 	ct: tokio_util::sync::CancellationToken,
+	listener_name: String,
 }
 
 impl App {
@@ -54,6 +56,7 @@ impl App {
 		metrics: Arc<relay::metrics::Metrics>,
 		authn: Arc<RwLock<Option<authn::JwtAuthenticator>>>,
 		ct: tokio_util::sync::CancellationToken,
+		listener_name: String,
 	) -> Self {
 		Self {
 			state,
@@ -62,6 +65,7 @@ impl App {
 			authn,
 			connection_id: Arc::new(tokio::sync::RwLock::new(None)),
 			ct,
+			listener_name,
 		}
 	}
 	pub fn router(&self) -> Router {
@@ -191,8 +195,24 @@ async fn sse_handler(
 		.insert(session.clone(), from_client_tx);
 	{
 		let session = session.clone();
+		let policies = {
+			let state = app.state.read().await;
+			let listener = state
+				.listeners
+				.get(&app.listener_name)
+				.expect("listener not found, this should never happen");
+			match &listener.spec {
+				inbound::ListenerType::Sse(s) => s.policies().clone(),
+				_ => rbac::RuleSets::default(),
+			}
+		};
 		tokio::spawn(async move {
-			let relay = Relay::new(app.state.clone(), app.metrics.clone());
+			let relay = Relay::new(
+				app.state.clone(),
+				app.metrics.clone(),
+				policies,
+				app.listener_name.clone(),
+			);
 			let stream = ReceiverStream::new(from_client_rx);
 			let sink = PollSender::new(to_client_tx).sink_map_err(std::io::Error::other);
 			let result = serve_server(relay.clone(), (sink, stream))
@@ -207,7 +227,7 @@ async fn sse_handler(
 				return;
 			}
 			let state = app.state.read().await;
-			let mut rx: tokio::sync::broadcast::Receiver<String> = state.targets.subscribe();
+			let mut rx: tokio::sync::broadcast::Receiver<String> = state.mcp_targets.subscribe();
 			drop(state);
 			loop {
 				// Add a listener drain channel here.

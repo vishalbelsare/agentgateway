@@ -11,20 +11,18 @@ pub use metrics::*;
 pub use types::*;
 
 use self::envoy::service::discovery::v3::DeltaDiscoveryRequest;
-use crate::proto;
+use crate::proto::aidp::dev::a2a::target::Target as A2aXdsTarget;
 use crate::proto::aidp::dev::common::BackendAuth as XdsAuth;
 use crate::proto::aidp::dev::common::backend_auth::Auth as XdsAuthSpec;
-use crate::proto::aidp::dev::mcp::listener::Listener as XdsListener;
-use crate::proto::aidp::dev::mcp::rbac::RuleSet as XdsRbac;
-use crate::proto::aidp::dev::mcp::target::Target as XdsTarget;
-use crate::proto::aidp::dev::mcp::target::target::Target as XdsTargetSpec;
+use crate::proto::aidp::dev::listener::Listener as XdsListener;
+use crate::proto::aidp::dev::mcp::target::Target as McpXdsTarget;
+use crate::proto::aidp::dev::rbac::RuleSet as XdsRbac;
 use crate::rbac;
 use crate::strng::Strng;
 use std::collections::HashMap;
 
 use crate::inbound;
 use crate::outbound;
-use crate::trcng;
 use serde::{Deserialize, Serialize};
 
 pub mod client;
@@ -102,74 +100,114 @@ impl ProxyStateUpdater {
 impl ProxyStateUpdateMutator {
 	#[instrument(
         level = Level::TRACE,
-        name="insert_target",
+        name="insert_mcp_target",
         skip_all,
-        fields(name=%target.name),
+        fields(name=%proto.name),
     )]
-	pub fn insert_target(&self, state: &mut XdsStore, target: XdsTarget) -> anyhow::Result<()> {
-		state.targets.insert(target)?;
+	pub fn insert_mcp_target(&self, state: &mut XdsStore, proto: McpXdsTarget) -> anyhow::Result<()> {
+		state.mcp_targets.insert(proto)?;
 		Ok(())
 	}
 
 	#[instrument(
         level = Level::TRACE,
-        name="remove_target",
+        name="remove_mcp_target",
         skip_all,
         fields(name=%xds_name),
     )]
-	pub fn remove_target(&self, state: &mut XdsStore, xds_name: &Strng) -> anyhow::Result<()> {
-		state.targets.remove(xds_name)?;
+	pub fn remove_mcp_target(&self, state: &mut XdsStore, xds_name: &Strng) -> anyhow::Result<()> {
+		state.mcp_targets.remove(xds_name)?;
 		Ok(())
 	}
 
 	#[instrument(
         level = Level::TRACE,
-        name="insert_rbac",
+        name="insert_a2a_target",
         skip_all,
+        fields(name=%proto.name),
     )]
-	pub fn insert_rbac(&self, state: &mut XdsStore, rbac: XdsRbac) -> anyhow::Result<()> {
-		state.policies.insert(rbac)?;
+	pub fn insert_a2a_target(&self, state: &mut XdsStore, proto: A2aXdsTarget) -> anyhow::Result<()> {
+		state.a2a_targets.insert(proto)?;
 		Ok(())
 	}
 
 	#[instrument(
         level = Level::TRACE,
-        name="remove_rbac",
+        name="remove_a2a_target",
         skip_all,
         fields(name=%xds_name),
     )]
-	pub fn remove_rbac(&self, state: &mut XdsStore, xds_name: &Strng) {
-		state.policies.remove(xds_name);
+	pub fn remove_a2a_target(&self, state: &mut XdsStore, xds_name: &Strng) -> anyhow::Result<()> {
+		state.a2a_targets.remove(xds_name)?;
+		Ok(())
+	}
+
+	pub async fn insert_listener(
+		&self,
+		state: &mut XdsStore,
+		listener: XdsListener,
+	) -> anyhow::Result<()> {
+		state.listeners.insert(listener).await
+	}
+
+	#[instrument(
+        level = Level::TRACE,
+        name="remove_listener",
+        skip_all,
+        fields(name=%xds_name),
+    )]
+	pub async fn remove_listener(
+		&self,
+		state: &mut XdsStore,
+		xds_name: &Strng,
+	) -> anyhow::Result<()> {
+		state.listeners.remove(xds_name).await?;
+		Ok(())
 	}
 }
 
 #[async_trait::async_trait]
-impl Handler<XdsTarget> for ProxyStateUpdater {
-	async fn handle(&self, updates: Vec<XdsUpdate<XdsTarget>>) -> Result<(), Vec<RejectedConfig>> {
-		let mut state = self.state.write().await;
-		let handle = |res: XdsUpdate<XdsTarget>| {
+impl Handler<McpXdsTarget> for ProxyStateUpdater {
+	async fn handle(&self, updates: Vec<XdsUpdate<McpXdsTarget>>) -> Result<(), Vec<RejectedConfig>> {
+		let handle = |res: XdsUpdate<McpXdsTarget>| async {
+			let mut state = self.state.write().await;
 			match res {
-				XdsUpdate::Update(w) => self.updater.insert_target(&mut state, w.resource)?,
-				XdsUpdate::Remove(name) => self.updater.remove_target(&mut state, &name)?,
+				XdsUpdate::Update(w) => self.updater.insert_mcp_target(&mut state, w.resource)?,
+				XdsUpdate::Remove(name) => self.updater.remove_mcp_target(&mut state, &name)?,
 			}
 			Ok(())
 		};
-		handle_single_resource(updates, handle)
+		handle_single_resource(updates, handle).await
 	}
 }
 
 #[async_trait::async_trait]
-impl Handler<XdsRbac> for ProxyStateUpdater {
-	async fn handle(&self, updates: Vec<XdsUpdate<XdsRbac>>) -> Result<(), Vec<RejectedConfig>> {
-		let mut state = self.state.write().await;
-		let handle = |res: XdsUpdate<XdsRbac>| {
+impl Handler<A2aXdsTarget> for ProxyStateUpdater {
+	async fn handle(&self, updates: Vec<XdsUpdate<A2aXdsTarget>>) -> Result<(), Vec<RejectedConfig>> {
+		let handle = |res: XdsUpdate<A2aXdsTarget>| async {
+			let mut state = self.state.write().await;
 			match res {
-				XdsUpdate::Update(w) => self.updater.insert_rbac(&mut state, w.resource)?,
-				XdsUpdate::Remove(name) => self.updater.remove_rbac(&mut state, &name),
+				XdsUpdate::Update(w) => self.updater.insert_a2a_target(&mut state, w.resource)?,
+				XdsUpdate::Remove(name) => self.updater.remove_a2a_target(&mut state, &name)?,
 			}
 			Ok(())
 		};
-		handle_single_resource(updates, handle)
+		handle_single_resource(updates, handle).await
+	}
+}
+
+#[async_trait::async_trait]
+impl Handler<XdsListener> for ProxyStateUpdater {
+	async fn handle(&self, updates: Vec<XdsUpdate<XdsListener>>) -> Result<(), Vec<RejectedConfig>> {
+		let handle = |res: XdsUpdate<XdsListener>| async {
+			let mut state = self.state.write().await;
+			match res {
+				XdsUpdate::Update(w) => self.updater.insert_listener(&mut state, w.resource).await?,
+				XdsUpdate::Remove(name) => self.updater.remove_listener(&mut state, &name).await?,
+			}
+			Ok(())
+		};
+		handle_single_resource(updates, handle).await
 	}
 }
 
@@ -179,44 +217,6 @@ pub enum ParseError {
 	MissingFields,
 	#[error("invalid schema")]
 	InvalidSchema,
-}
-
-impl TryFrom<XdsTarget> for outbound::Target {
-	type Error = ParseError;
-	fn try_from(value: XdsTarget) -> Result<Self, Self::Error> {
-		let target = value.target.ok_or(ParseError::MissingFields)?;
-		let spec = match target {
-			XdsTargetSpec::Sse(sse) => outbound::TargetSpec::Sse {
-				host: sse.host.clone(),
-				port: sse.port,
-				path: sse.path.clone(),
-				headers: proto::resolve_header_map(&sse.headers).map_err(|_| ParseError::InvalidSchema)?,
-				backend_auth: match sse.auth {
-					Some(auth) => XdsAuth::try_into(auth)?,
-					None => None,
-				},
-			},
-			XdsTargetSpec::A2a(a2a) => outbound::TargetSpec::A2a {
-				host: a2a.host.clone(),
-				port: a2a.port,
-				path: a2a.path.clone(),
-				headers: a2a.headers.clone(),
-				backend_auth: None,
-			},
-			XdsTargetSpec::Stdio(stdio) => outbound::TargetSpec::Stdio {
-				cmd: stdio.cmd.clone(),
-				args: stdio.args.clone(),
-				env: stdio.env.clone(),
-			},
-			XdsTargetSpec::Openapi(openapi) => outbound::TargetSpec::OpenAPI(
-				outbound::OpenAPITarget::try_from(openapi).map_err(|_| ParseError::InvalidSchema)?,
-			),
-		};
-		Ok(outbound::Target {
-			name: value.name.clone(),
-			spec,
-		})
-	}
 }
 
 impl TryFrom<XdsAuth> for Option<outbound::backend::BackendAuthConfig> {
@@ -232,30 +232,44 @@ impl TryFrom<XdsAuth> for Option<outbound::backend::BackendAuthConfig> {
 }
 
 #[derive(Clone)]
-pub struct TargetStore {
-	by_name: HashMap<String, (outbound::Target, tokio_util::sync::CancellationToken)>,
+pub struct TargetStore<T, M: prost::Message + Serialize + Clone> {
+	by_name: HashMap<String, (outbound::Target<T>, tokio_util::sync::CancellationToken)>,
 
-	by_name_protos: HashMap<String, XdsTarget>,
+	by_name_protos: HashMap<String, M>,
 
 	broadcast_tx: tokio::sync::broadcast::Sender<String>,
 }
 
-impl Serialize for TargetStore {
+impl<T: Clone, M: prost::Message + Serialize + Clone> Serialize for TargetStore<T, M>
+where
+	outbound::Target<T>: Serialize,
+{
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: serde::Serializer,
 	{
-		self.by_name_protos.serialize(serializer)
+		self
+			.by_name
+			.iter()
+			.map(|(name, target)| (name.clone(), target.0.clone()))
+			.collect::<Vec<_>>()
+			.serialize(serializer)
 	}
 }
 
-impl Default for TargetStore {
+impl<T, M: prost::Message + Serialize + Clone> Default for TargetStore<T, M>
+where
+	outbound::Target<T>: TryFrom<M, Error = anyhow::Error>,
+{
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl TargetStore {
+impl<T, M: prost::Message + Serialize + Clone> TargetStore<T, M>
+where
+	outbound::Target<T>: TryFrom<M, Error = anyhow::Error>,
+{
 	pub fn new() -> Self {
 		let (tx, _rx) = tokio::sync::broadcast::channel(16);
 		Self {
@@ -280,42 +294,50 @@ impl TargetStore {
         level = Level::INFO,
         name="insert_target",
         skip_all,
-        fields(name=%target.name),
     )]
-	pub fn insert(&mut self, target: XdsTarget) -> anyhow::Result<()> {
-		let target_name = target.name.clone();
-		let outbound_target = outbound::Target::try_from(target.clone())?;
+	pub fn insert(&mut self, proto: M) -> anyhow::Result<()> {
+		let converted_target: outbound::Target<T> = proto.clone().try_into()?;
 		let ct = tokio_util::sync::CancellationToken::new();
-		self
-			.by_name
-			.insert(target_name.clone(), (outbound_target, ct));
-		self.by_name_protos.insert(target_name.clone(), target);
-		tracing::info!("inserted target: {}", target_name);
+		let name = converted_target.name.clone();
+		self.by_name.insert(name.clone(), (converted_target, ct));
+		self.by_name_protos.insert(name.clone(), proto);
+		tracing::info!("inserted target: {}", name);
 		Ok(())
 	}
 
 	pub fn get(
 		&self,
 		name: &str,
-	) -> Option<(&outbound::Target, &tokio_util::sync::CancellationToken)> {
-		self.by_name.get(name).map(|(target, ct)| (target, ct))
+		listener_name: &str,
+	) -> Option<(&outbound::Target<T>, &tokio_util::sync::CancellationToken)> {
+		let target = self.by_name.get(name).map(|(target, ct)| (target, ct));
+		if let Some((target, ct)) = target {
+			if target.listeners.contains(&listener_name.to_string()) || target.listeners.is_empty() {
+				return Some((target, ct));
+			}
+		}
+		None
 	}
 
-	pub fn get_proto(&self, name: &str) -> Option<&XdsTarget> {
+	pub fn get_proto(&self, name: &str) -> Option<&M> {
 		self.by_name_protos.get(name)
 	}
 
 	pub fn iter(
 		&self,
+		listener_name: &str,
 	) -> impl Iterator<
 		Item = (
 			String,
-			&(outbound::Target, tokio_util::sync::CancellationToken),
+			&(outbound::Target<T>, tokio_util::sync::CancellationToken),
 		),
 	> {
 		self
 			.by_name
 			.iter()
+			.filter(move |(_, target)| {
+				target.0.listeners.contains(&listener_name.to_string()) || target.0.listeners.is_empty()
+			})
 			.map(|(name, target)| (name.clone(), target))
 	}
 
@@ -383,18 +405,99 @@ impl PolicyStore {
 	}
 }
 
+#[derive(Clone)]
+pub struct ListenerStore {
+	by_name: HashMap<String, inbound::Listener>,
+	by_name_protos: HashMap<String, XdsListener>,
+	update_tx: tokio::sync::mpsc::Sender<UpdateEvent>,
+}
+
+impl Serialize for ListenerStore {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.by_name.serialize(serializer)
+	}
+}
+pub enum UpdateEvent {
+	Insert(String),
+	Update(String),
+	Remove(String),
+}
+
+impl ListenerStore {
+	pub fn new(update_tx: tokio::sync::mpsc::Sender<UpdateEvent>) -> Self {
+		Self {
+			by_name: HashMap::new(),
+			by_name_protos: HashMap::new(),
+			update_tx,
+		}
+	}
+}
+
+impl ListenerStore {
+	pub fn iter(&self) -> impl Iterator<Item = (&String, &inbound::Listener)> {
+		self.by_name.iter()
+	}
+
+	pub async fn insert(&mut self, listener: XdsListener) -> anyhow::Result<()> {
+		let listener_name = listener.name.clone();
+		self
+			.by_name_protos
+			.insert(listener_name.clone(), listener.clone());
+		let xds_listener = inbound::Listener::from_xds(listener).await?;
+		match self.by_name.insert(listener_name.clone(), xds_listener) {
+			Some(_) => {
+				self
+					.update_tx
+					.send(UpdateEvent::Update(listener_name))
+					.await
+					.map_err(|e| anyhow::anyhow!("failed to send update event: {:?}", e))?;
+			},
+			None => {
+				self
+					.update_tx
+					.send(UpdateEvent::Insert(listener_name))
+					.await
+					.map_err(|e| anyhow::anyhow!("failed to send update event: {:?}", e))?;
+			},
+		}
+		Ok(())
+	}
+
+	pub fn get(&self, listener_name: &str) -> Option<&inbound::Listener> {
+		self.by_name.get(listener_name)
+	}
+
+	pub fn get_proto(&self, listener_name: &str) -> Option<&XdsListener> {
+		self.by_name_protos.get(listener_name)
+	}
+
+	pub async fn remove(&mut self, listener_name: &str) -> anyhow::Result<()> {
+		self.by_name_protos.remove(listener_name);
+		self.by_name.remove(listener_name);
+		self
+			.update_tx
+			.send(UpdateEvent::Remove(listener_name.to_string()))
+			.await
+			.map_err(|e| anyhow::anyhow!("failed to send update event: {:?}", e))?;
+		Ok(())
+	}
+}
+
 pub struct XdsStore {
-	pub targets: TargetStore,
-	pub policies: PolicyStore,
-	pub listener: inbound::Listener,
+	pub a2a_targets: TargetStore<outbound::A2aTargetSpec, A2aXdsTarget>,
+	pub mcp_targets: TargetStore<outbound::McpTargetSpec, McpXdsTarget>,
+	pub listeners: ListenerStore,
 }
 
 impl XdsStore {
-	pub fn new(listener: inbound::Listener) -> Self {
+	pub fn new(update_tx: tokio::sync::mpsc::Sender<UpdateEvent>) -> Self {
 		Self {
-			targets: TargetStore::new(),
-			policies: PolicyStore::new(),
-			listener,
+			a2a_targets: TargetStore::new(),
+			mcp_targets: TargetStore::new(),
+			listeners: ListenerStore::new(update_tx),
 		}
 	}
 }
@@ -403,6 +506,5 @@ impl XdsStore {
 pub struct Config {
 	pub xds_address: String,
 	pub metadata: HashMap<String, String>,
-	pub listener: XdsListener,
-	pub tracing: Option<trcng::Config>,
+	pub listeners: Vec<XdsListener>,
 }

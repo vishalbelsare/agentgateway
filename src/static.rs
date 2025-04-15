@@ -1,33 +1,35 @@
 use std::sync::Arc;
 use tracing::{debug, info, trace};
 
-use crate::proto::aidp::dev::mcp::listener::Listener as XdsListener;
-use crate::proto::aidp::dev::mcp::rbac::{Rule as XdsRule, RuleSet as XdsRuleSet};
-use crate::proto::aidp::dev::mcp::target::Target as XdsTarget;
-use crate::relay;
-use crate::trcng;
+use crate::inbound;
+use crate::proto::aidp::dev::a2a::target::Target as XdsA2aTarget;
+use crate::proto::aidp::dev::listener::Listener as XdsListener;
+use crate::proto::aidp::dev::mcp::target::Target as XdsMcpTarget;
 use crate::xds::XdsStore as ProxyState;
-use crate::{a2a, inbound};
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StaticConfig {
 	#[serde(default)]
-	pub targets: Vec<XdsTarget>,
+	targets: Targets,
 	#[serde(default)]
-	pub policies: Vec<XdsRule>,
-	#[serde(default)]
-	pub listener: XdsListener,
+	pub listeners: Vec<XdsListener>,
+}
 
-	pub tracing: Option<trcng::Config>,
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Targets {
+	#[serde(default)]
+	pub mcp: Vec<XdsMcpTarget>,
+	#[serde(default)]
+	pub a2a: Vec<XdsA2aTarget>,
 }
 
 pub async fn run_local_client(
 	cfg: &StaticConfig,
 	state_ref: Arc<tokio::sync::RwLock<ProxyState>>,
-	metrics: Arc<relay::metrics::Metrics>,
-	a2a_metrics: Arc<a2a::metrics::Metrics>,
+	mut listener_manager: inbound::ListenerManager,
 	ct: tokio_util::sync::CancellationToken,
-) -> Result<(), crate::inbound::ServingError> {
+) -> Result<(), anyhow::Error> {
 	debug!(
 		"load local config: {}",
 		serde_yaml::to_string(&cfg).unwrap_or_default()
@@ -36,32 +38,23 @@ pub async fn run_local_client(
 	let state_clone = state_ref.clone();
 	{
 		let mut state = state_clone.write().await;
-		let num_targets = cfg.targets.len();
-		let num_policies = cfg.policies.len();
-		for target in cfg.targets.clone() {
+		let num_mcp_targets = cfg.targets.mcp.len();
+		for target in cfg.targets.mcp.clone() {
 			trace!("inserting target {}", &target.name);
 			state
-				.targets
+				.mcp_targets
 				.insert(target)
 				.expect("failed to insert target into store");
 		}
-		if !cfg.policies.is_empty() {
-			let rule_set = XdsRuleSet {
-				name: "test".to_string(),
-				namespace: "test".to_string(),
-				rules: cfg.policies.clone(),
-			};
+		let num_a2a_targets = cfg.targets.a2a.len();
+		for target in cfg.targets.a2a.clone() {
+			trace!("inserting target {}", &target.name);
 			state
-				.policies
-				.insert(rule_set)
-				.expect("failed to insert rule set into store");
+				.a2a_targets
+				.insert(target)
+				.expect("failed to insert target into store");
 		}
-		info!(%num_targets, %num_policies, "local config initialized");
+		info!(%num_mcp_targets, %num_a2a_targets, "local config initialized");
 	}
-
-	let listener = inbound::Listener::from_xds(cfg.listener.clone())
-		.await
-		.unwrap();
-
-	listener.listen(state_ref, metrics, a2a_metrics, ct).await
+	listener_manager.run(ct).await
 }

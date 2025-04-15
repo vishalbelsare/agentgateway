@@ -9,11 +9,13 @@ message Target {
   // The name of the target.
   string name = 1;
 
+  // The listeners which are allowed to connect to the target.
+  repeated string listeners = 2;
+
   oneof target {
-    SseTarget sse = 2;
-    OpenAPITarget openapi = 3;
-    StdioTarget stdio = 4;
-    A2aTarget a2a = 5;
+    SseTarget sse = 3;
+    OpenAPITarget openapi = 4;
+    StdioTarget stdio = 5;
   }
 
 
@@ -28,16 +30,8 @@ message Target {
     repeated aidp.dev.common.Header headers = 4;
 
     aidp.dev.common.BackendAuth auth = 5;
-  }
-  message A2aTarget {
-    // The host of the target.
-    string host = 1;
-    // The port of the target.
-    uint32 port = 2;
-    // The path of the target.
-    string path = 3;
-    // The headers of the target.
-    map<string, string> headers = 4;
+
+    aidp.dev.common.BackendTls tls = 6;
   }
 
   message StdioTarget {
@@ -59,7 +53,9 @@ message Target {
 
     aidp.dev.common.BackendAuth auth = 4;
 
-    repeated aidp.dev.common.Header headers = 5;
+    aidp.dev.common.BackendTls tls = 5;
+
+    repeated aidp.dev.common.Header headers = 6;
   }
 }
 

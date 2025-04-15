@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tracing::{Instrument, debug, error, info, info_span, warn};
 
-use crate::metrics::{IncrementRecorder, Recorder};
+use crate::mtrcs::{IncrementRecorder, Recorder};
 // use crate::strng::Strng;
 use super::envoy::service::discovery::v3::Resource as ProtoResource;
 use super::envoy::service::discovery::v3::aggregated_discovery_service_client::AggregatedDiscoveryServiceClient;
@@ -66,23 +66,24 @@ impl Display for RejectedConfig {
 	}
 }
 
-/// handle_single_resource is a helper to process a set of updates with a closure that processes items one-by-one.
+/// handle_single_resource is a helper to process a set of updates with an async closure.
 /// It handles aggregating errors as NACKS.
-pub fn handle_single_resource<T: prost::Message, F: FnMut(XdsUpdate<T>) -> anyhow::Result<()>>(
+pub async fn handle_single_resource<
+	T: prost::Message + Send,
+	Fut: std::future::Future<Output = anyhow::Result<()>> + Send,
+	F: FnMut(XdsUpdate<T>) -> Fut + Send + Sync,
+>(
 	updates: Vec<XdsUpdate<T>>,
 	mut handle_one: F,
 ) -> Result<(), Vec<RejectedConfig>> {
-	let rejects: Vec<RejectedConfig> = updates
-		.into_iter()
-		.filter_map(|res| {
-			let name = res.name();
-			if let Err(e) = handle_one(res) {
-				Some(RejectedConfig::new(name, e))
-			} else {
-				None
-			}
-		})
-		.collect();
+	let mut rejects = Vec::new();
+	for res in updates {
+		let name = res.name();
+		if let Err(e) = handle_one(res).await {
+			rejects.push(RejectedConfig::new(name, e));
+		}
+	}
+
 	if rejects.is_empty() {
 		Ok(())
 	} else {

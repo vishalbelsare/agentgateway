@@ -1,6 +1,7 @@
 use crate::a2a::metrics;
-use crate::inbound::Listener;
-use crate::outbound::{Target, TargetSpec};
+use crate::inbound;
+use crate::outbound;
+use crate::outbound::A2aTargetSpec;
 use crate::xds::XdsStore;
 use crate::{a2a, backend, rbac};
 use a2a_sdk::AgentCard;
@@ -18,14 +19,20 @@ use tracing::instrument;
 pub struct Relay {
 	state: Arc<tokio::sync::RwLock<XdsStore>>,
 	pool: pool::ConnectionPool,
+	listener_name: String,
 	_metrics: Arc<metrics::Metrics>,
 }
 
 impl Relay {
-	pub fn new(state: Arc<tokio::sync::RwLock<XdsStore>>, metrics: Arc<metrics::Metrics>) -> Self {
+	pub fn new(
+		state: Arc<tokio::sync::RwLock<XdsStore>>,
+		metrics: Arc<metrics::Metrics>,
+		listener_name: String,
+	) -> Self {
 		Self {
 			state: state.clone(),
-			pool: pool::ConnectionPool::new(state.clone()),
+			pool: pool::ConnectionPool::new(state.clone(), listener_name.clone()),
+			listener_name,
 			_metrics: metrics,
 		}
 	}
@@ -50,15 +57,17 @@ impl Relay {
 			.fetch_agent_card()
 			.await?;
 		let state = self.state.read().await;
-		let url = match &state.listener {
-			Listener::A2a(a) => a.url(host),
-			_ => {
-				panic!("must be a2a")
-			},
+		let listener = state
+			.listeners
+			.get(&self.listener_name)
+			.expect("listener not found");
+		let (url, pols) = match &listener.spec {
+			inbound::ListenerType::A2a(a) => (a.url(host), a.policies()),
+			inbound::ListenerType::Sse(s) => (s.url(host), s.policies()),
+			inbound::ListenerType::Stdio => panic!("stdio listener not supported"),
 		};
 		card.url = format!("{}/{}", url, service_name);
 
-		let pols = &state.policies;
 		card.skills = card
 			.skills
 			.iter()
@@ -132,12 +141,16 @@ mod pool {
 	use super::*;
 
 	pub(crate) struct ConnectionPool {
+		listener_name: String,
 		state: Arc<tokio::sync::RwLock<XdsStore>>,
 	}
 
 	impl ConnectionPool {
-		pub(crate) fn new(state: Arc<tokio::sync::RwLock<XdsStore>>) -> Self {
-			Self { state }
+		pub(crate) fn new(state: Arc<tokio::sync::RwLock<XdsStore>>, listener_name: String) -> Self {
+			Self {
+				state,
+				listener_name,
+			}
 		}
 
 		#[instrument(level = "debug", skip_all, fields(name))]
@@ -146,11 +159,14 @@ mod pool {
 			rq_ctx: &RqCtx,
 			name: &str,
 		) -> Result<a2a::Client, anyhow::Error> {
-			let target_info: Option<(Target, tokio_util::sync::CancellationToken)> = {
+			let target_info: Option<(
+				outbound::Target<outbound::A2aTargetSpec>,
+				tokio_util::sync::CancellationToken,
+			)> = {
 				let state = self.state.read().await;
 				state
-					.targets
-					.get(name)
+					.a2a_targets
+					.get(name, &self.listener_name)
 					.map(|(target, ct)| (target.clone(), ct.clone()))
 			};
 
@@ -164,22 +180,16 @@ mod pool {
 			};
 			tracing::trace!("connecting to target: {}", target.name);
 			let transport = match &target.spec {
-				TargetSpec::A2a {
-					host,
-					port,
-					path,
-					backend_auth,
-					headers,
-				} => {
+				A2aTargetSpec::Sse(sse) => {
 					tracing::info!("starting A2a transport for target: {}", target.name);
 
-					let scheme = match port {
+					let scheme = match sse.port {
 						443 => "https",
 						_ => "http",
 					};
-					let url = format!("{}://{}:{}{}", scheme, host, port, path);
-					let mut upstream_headers = get_default_headers(backend_auth, rq_ctx).await?;
-					for (key, value) in headers {
+					let url = format!("{}://{}:{}{}", scheme, sse.host, sse.port, sse.path);
+					let mut upstream_headers = get_default_headers(sse.backend_auth.as_ref(), rq_ctx).await?;
+					for (key, value) in sse.headers.iter() {
 						upstream_headers.insert(
 							HeaderName::from_bytes(key.as_bytes())?,
 							HeaderValue::from_str(value)?,
@@ -194,7 +204,6 @@ mod pool {
 						client,
 					}
 				},
-				_ => anyhow::bail!("only A2A target is supported"),
 			};
 			Ok(transport)
 		}
@@ -210,7 +219,7 @@ impl<T: Serialize> From<SerializeStream<T>> for bytes::Bytes {
 }
 
 async fn get_default_headers(
-	auth_config: &Option<backend::BackendAuthConfig>,
+	auth_config: Option<&backend::BackendAuthConfig>,
 	rq_ctx: &RqCtx,
 ) -> Result<HeaderMap, anyhow::Error> {
 	match auth_config {

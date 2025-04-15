@@ -6,16 +6,25 @@ import "common.proto";
 
 message Target {
 
-  // The name of the target.
-  string name = 1;
-  // The host of the target.
-  string host = 2;
-  // The port of the target.
-  uint32 port = 3;
-  // The headers of the target.
-  map<string, string> headers = 4;
+  // The listeners which are allowed to connect to the target.
+  repeated string listeners = 1;
 
-  aidp.dev.common.BackendAuth auth = 5;
+  // The name of the target.
+  string name = 2;
+  // The host of the target.
+  string host = 3;
+  // The port of the target.
+  uint32 port = 4;
+  // The path of the target.
+  string path = 5;
+  // The headers of the target.
+  repeated aidp.dev.common.Header headers = 6;
+
+  // The auth of the target.
+  aidp.dev.common.BackendAuth auth = 7;
+
+  // The tls of the target.
+  aidp.dev.common.BackendTls tls = 8;
 
 }
 

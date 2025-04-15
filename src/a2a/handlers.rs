@@ -1,6 +1,6 @@
 use crate::a2a::metrics;
 use crate::a2a::relay;
-use crate::metrics::Recorder;
+use crate::mtrcs::Recorder;
 use crate::sse::AuthError;
 use crate::{a2a, authn, proxyprotocol, rbac, trcng};
 use a2a_sdk::AgentCard;
@@ -26,6 +26,7 @@ pub struct App {
 	state: Arc<tokio::sync::RwLock<crate::xds::XdsStore>>,
 	metrics: Arc<crate::a2a::metrics::Metrics>,
 	authn: Arc<RwLock<Option<authn::JwtAuthenticator>>>,
+	listener_name: String,
 	_ct: tokio_util::sync::CancellationToken,
 }
 
@@ -62,11 +63,13 @@ impl App {
 		metrics: Arc<crate::a2a::metrics::Metrics>,
 		authn: Arc<RwLock<Option<authn::JwtAuthenticator>>>,
 		ct: tokio_util::sync::CancellationToken,
+		listener_name: String,
 	) -> Self {
 		Self {
 			state,
 			metrics,
 			authn,
+			listener_name,
 			_ct: ct,
 		}
 	}
@@ -88,7 +91,11 @@ async fn agent_card_handler(
 ) -> anyhow::Result<Json<AgentCard>, StatusCode> {
 	tracing::info!("new agent card request");
 
-	let relay = relay::Relay::new(app.state.clone(), app.metrics.clone());
+	let relay = relay::Relay::new(
+		app.state.clone(),
+		app.metrics.clone(),
+		app.listener_name.clone(),
+	);
 	let connection_id = connection.identity.clone().map(|i| i.to_string());
 	let claims = rbac::Identity::new(claims, connection_id);
 	let context = trcng::extract_context_from_request(&headers);
@@ -131,7 +138,11 @@ async fn agent_call_handler(
 	StatusCode,
 > {
 	tracing::info!("new agent call");
-	let relay = a2a::relay::Relay::new(app.state.clone(), app.metrics.clone());
+	let relay = a2a::relay::Relay::new(
+		app.state.clone(),
+		app.metrics.clone(),
+		app.listener_name.clone(),
+	);
 	let connection_id = connection.identity.clone().map(|i| i.to_string());
 	let claims = rbac::Identity::new(claims, connection_id);
 	let context = trcng::extract_context_from_request(&headers);
