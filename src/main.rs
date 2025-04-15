@@ -106,14 +106,31 @@ async fn main() -> Result<()> {
 		(None, None) => {
 			// Check config dir
 			if let Ok(Some(config_dir)) = homedir::my_home() {
-				let config_dir = config_dir.join("config");
-				if config_dir.exists() {
-					tracing::error!("Error: either --file or --config must be provided, exiting");
-					std::process::exit(1);
+				let config_dir = config_dir.join("aidp");
+				let config_file = config_dir.join("config.json");
+				if config_file.exists() {
+					tracing::info!(
+						"Reading config from cache_dir: {}",
+						config_file.to_string_lossy()
+					);
+					let file = tokio::fs::read_to_string(config_file).await?;
+					serde_json::from_str(&file)?
+				} else {
+					tracing::info!("No config found in cache_dir, creating default config");
+					let config = Config {
+						config_type: ConfigType::Static(StaticConfig::default()),
+						admin: None,
+						metrics: None,
+						tracing: None,
+					};
+					let config_file = config_dir.join("config.json");
+					tokio::fs::write(config_file, serde_json::to_string(&config)?).await?;
+					config
 				}
+			} else {
+				tracing::error!("Error: could not get home directory, exiting");
+				std::process::exit(1);
 			}
-			tracing::error!("Error: either --file or --config must be provided, exiting");
-			std::process::exit(1);
 		},
 	};
 
