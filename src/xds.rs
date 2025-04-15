@@ -250,8 +250,8 @@ where
 	{
 		self
 			.by_name
-			.iter()
-			.map(|(name, target)| (name.clone(), target.0.clone()))
+			.values()
+			.map(|(target, _)| target.clone())
 			.collect::<Vec<_>>()
 			.serialize(serializer)
 	}
@@ -417,7 +417,12 @@ impl Serialize for ListenerStore {
 	where
 		S: serde::Serializer,
 	{
-		self.by_name.serialize(serializer)
+		self
+			.by_name_protos
+			.values()
+			.cloned()
+			.collect::<Vec<_>>()
+			.serialize(serializer)
 	}
 }
 pub enum UpdateEvent {
