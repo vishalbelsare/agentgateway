@@ -1,5 +1,5 @@
 ARG VERSION="latest"
-FROM ghcr.io/agentproxy/agentproxy:${VERSION} as source
+FROM ghcr.io/agentproxy-dev/agentproxy:${VERSION} as source
 
 FROM ghcr.io/astral-sh/uv:0.6.5-debian-slim AS final
 
