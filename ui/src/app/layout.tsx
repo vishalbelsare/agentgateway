@@ -38,7 +38,7 @@ export default function RootLayout({
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
-          storageKey="mcp-proxy-theme"
+          storageKey="agentproxy-theme"
         >
           <LoadingWrapper>
             <main className="flex-1 overflow-auto">{children}</main>

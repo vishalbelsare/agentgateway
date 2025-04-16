@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package aidp.dev.rbac;
+package agentproxy.dev.rbac;
 
 // A rule that defines a resource type and a key-value pair 
 //that can be used to match against a resource.

@@ -32,6 +32,8 @@ lazy_static::lazy_static! {
 	static ref DEFAULT_RQ_CTX: RqCtx = RqCtx::default();
 }
 
+const DELIMITER: &str = "_";
+
 #[derive(Clone)]
 pub struct RqCtx {
 	identity: rbac::Identity,
@@ -238,7 +240,7 @@ impl ServerHandler for Relay {
 						r.prompts
 							.into_iter()
 							.map(|p| Prompt {
-								name: format!("{}:{}", _name, p.name),
+								name: format!("{}{}{}", _name, DELIMITER, p.name),
 								description: p.description,
 								arguments: p.arguments,
 							})
@@ -297,7 +299,7 @@ impl ServerHandler for Relay {
 		}
 
 		let uri = request.uri.to_string();
-		let (service_name, resource) = uri.split_once(':').unwrap();
+		let (service_name, resource) = uri.split_once(DELIMITER).unwrap();
 		let mut pool = self.pool.write().await;
 		let service_arc = pool
 			.get_or_create(rq_ctx, service_name)
@@ -353,7 +355,7 @@ impl ServerHandler for Relay {
 		}
 
 		let prompt_name = request.name.to_string();
-		let (service_name, prompt) = prompt_name.split_once(':').unwrap();
+		let (service_name, prompt) = prompt_name.split_once(DELIMITER).unwrap();
 		let mut pool = self.pool.write().await;
 		let svc = pool
 			.get_or_create(rq_ctx, service_name)
@@ -405,7 +407,7 @@ impl ServerHandler for Relay {
 							.into_iter()
 							.map(|t| Tool {
 								annotations: None,
-								name: Cow::Owned(format!("{}:{}", _name, t.name)),
+								name: Cow::Owned(format!("{}{}{}", _name, DELIMITER, t.name)),
 								description: t.description,
 								input_schema: t.input_schema,
 							})
@@ -463,7 +465,7 @@ impl ServerHandler for Relay {
 		}
 		let tool_name = request.name.to_string();
 		let (service_name, tool) = tool_name
-			.split_once(':')
+			.split_once(DELIMITER)
 			.ok_or(McpError::invalid_request("invalid tool name", None))?;
 		let mut pool = self.pool.write().await;
 		let svc = pool

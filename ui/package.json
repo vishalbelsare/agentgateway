@@ -1,11 +1,11 @@
 {
-  "name": "mcp-proxy-ui",
+  "name": "agentproxy-ui",
   "version": "0.1.0",
   "private": false,
   "description": "UI for MCP Proxy",
   "main": "index.js",
   "bin": {
-    "mcp-proxy-ui": "./bin/cli.js"
+    "agentproxy-ui": "./bin/cli.js"
   },
   "scripts": {
     "dev": "next dev --turbopack",

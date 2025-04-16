@@ -49,7 +49,7 @@ export function ConfigEditor({ config, setConfig }: ConfigEditorProps) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "mcp-proxy-config.json";
+    a.download = "agentproxy-config.json";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

@@ -1,24 +1,24 @@
+use agentproxy::r#static::{StaticConfig, run_local_client};
+use agentproxy::xds::Config as XdsConfig;
 use anyhow::Result;
 use clap::Parser;
-use mcp_proxy::r#static::{StaticConfig, run_local_client};
-use mcp_proxy::xds::Config as XdsConfig;
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::task::JoinSet;
 use tracing_subscriber::{self, EnvFilter};
 
-use mcp_proxy::admin;
-use mcp_proxy::mtrcs;
-use mcp_proxy::proto::aidp::dev::listener::Listener as XdsListener;
-use mcp_proxy::proto::aidp::dev::mcp::target::Target as XdsTarget;
-use mcp_proxy::relay;
-use mcp_proxy::signal;
-use mcp_proxy::trcng;
-use mcp_proxy::xds;
-use mcp_proxy::xds::ProxyStateUpdater;
-use mcp_proxy::xds::XdsStore as ProxyState;
-use mcp_proxy::{a2a, inbound};
+use agentproxy::admin;
+use agentproxy::mtrcs;
+use agentproxy::proto::agentproxy::dev::listener::Listener as XdsListener;
+use agentproxy::proto::agentproxy::dev::mcp::target::Target as XdsTarget;
+use agentproxy::relay;
+use agentproxy::signal;
+use agentproxy::trcng;
+use agentproxy::xds;
+use agentproxy::xds::ProxyStateUpdater;
+use agentproxy::xds::XdsStore as ProxyState;
+use agentproxy::{a2a, inbound};
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -110,10 +110,10 @@ async fn main() -> Result<()> {
 		(None, None) => {
 			// Check config dir
 			if let Ok(Some(config_dir)) = homedir::my_home() {
-				let config_dir = config_dir.join("aidp");
+				let config_dir = config_dir.join("agentproxy");
 				let config_file = config_dir.join("config.json");
 
-				// Create the aidp directory if it doesn't exist
+				// Create the agentproxy directory if it doesn't exist
 				if !config_dir.exists() {
 					tracing::info!(
 						"Creating config directory: {}",
