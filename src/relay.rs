@@ -135,8 +135,7 @@ impl ServerHandler for Relay {
 			.get::<RqCtx>()
 			.unwrap_or(&DEFAULT_RQ_CTX);
 		let tracer = trcng::get_tracer();
-		let _span = trcng::get_tracer()
-			.span_builder("list_resources")
+		let _span = trcng::start_span("list_resources", &rq_ctx.identity)
 			.with_kind(SpanKind::Server)
 			.start_with_context(tracer, &rq_ctx.context);
 		let mut pool = self.pool.write().await;
@@ -177,8 +176,7 @@ impl ServerHandler for Relay {
 			.get::<RqCtx>()
 			.unwrap_or(&DEFAULT_RQ_CTX);
 		let tracer = trcng::get_tracer();
-		let _span = trcng::get_tracer()
-			.span_builder("list_resource_templates")
+		let _span = trcng::start_span("list_resource_templates", &rq_ctx.identity)
 			.with_kind(SpanKind::Server)
 			.start_with_context(tracer, &rq_ctx.context);
 		let mut pool = self.pool.write().await;
@@ -202,10 +200,11 @@ impl ServerHandler for Relay {
 			.partition_result();
 
 		self.metrics.clone().record(
-			&metrics::ListCall {
+			metrics::ListCall {
 				resource_type: "resource_template".to_string(),
+				params: vec![],
 			},
-			(),
+			&rq_ctx.identity,
 		);
 
 		Ok(ListResourceTemplatesResult {
@@ -222,8 +221,7 @@ impl ServerHandler for Relay {
 	) -> std::result::Result<ListPromptsResult, McpError> {
 		let rq_ctx = context.extensions.get::<RqCtx>().unwrap_or(&DEFAULT_RQ_CTX);
 		let tracer = trcng::get_tracer();
-		let _span = trcng::get_tracer()
-			.span_builder("list_prompts")
+		let _span = trcng::start_span("list_prompts", &rq_ctx.identity)
 			.with_kind(SpanKind::Server)
 			.start_with_context(tracer, &rq_ctx.context);
 
@@ -256,11 +254,12 @@ impl ServerHandler for Relay {
 			.into_iter()
 			.partition_result();
 
-		self.metrics.clone().record(
-			&metrics::ListCall {
+		self.metrics.record(
+			metrics::ListCall {
 				resource_type: "prompt".to_string(),
+				params: vec![],
 			},
-			(),
+			&rq_ctx.identity,
 		);
 		Ok(ListPromptsResult {
 			prompts: results.into_iter().flatten().collect(),
@@ -285,8 +284,7 @@ impl ServerHandler for Relay {
 			.get::<RqCtx>()
 			.unwrap_or(&DEFAULT_RQ_CTX);
 		let tracer = trcng::get_tracer();
-		let _span = trcng::get_tracer()
-			.span_builder("read_resource")
+		let _span = trcng::start_span("read_resource", &rq_ctx.identity)
 			.with_kind(SpanKind::Server)
 			.start_with_context(tracer, &rq_ctx.context);
 		if !self.policies.validate(
@@ -312,11 +310,12 @@ impl ServerHandler for Relay {
 		};
 
 		self.metrics.clone().record(
-			&metrics::GetResourceCall {
+			metrics::GetResourceCall {
 				server: service_name.to_string(),
 				uri: resource.to_string(),
+				params: vec![],
 			},
-			(),
+			&rq_ctx.identity,
 		);
 		match service_arc.read_resource(req, rq_ctx).await {
 			Ok(r) => Ok(r),
@@ -341,8 +340,7 @@ impl ServerHandler for Relay {
 			.get::<RqCtx>()
 			.unwrap_or(&DEFAULT_RQ_CTX);
 		let tracer = trcng::get_tracer();
-		let _span = trcng::get_tracer()
-			.span_builder("get_prompt")
+		let _span = trcng::start_span("get_prompt", &rq_ctx.identity)
 			.with_kind(SpanKind::Server)
 			.start_with_context(tracer, &rq_ctx.context);
 		if !self.policies.validate(
@@ -369,11 +367,12 @@ impl ServerHandler for Relay {
 		};
 
 		self.metrics.clone().record(
-			&metrics::GetPromptCall {
+			metrics::GetPromptCall {
 				server: service_name.to_string(),
 				name: prompt.to_string(),
+				params: vec![],
 			},
-			(),
+			&rq_ctx.identity,
 		);
 		match svc.get_prompt(req, rq_ctx).await {
 			Ok(r) => Ok(r),
@@ -389,8 +388,7 @@ impl ServerHandler for Relay {
 	) -> std::result::Result<ListToolsResult, McpError> {
 		let rq_ctx = context.extensions.get::<RqCtx>().unwrap_or(&DEFAULT_RQ_CTX);
 		let tracer = trcng::get_tracer();
-		let _span = trcng::get_tracer()
-			.span_builder("list_tools")
+		let _span = trcng::start_span("list_tools", &rq_ctx.identity)
 			.with_kind(SpanKind::Server)
 			.start_with_context(tracer, &rq_ctx.context);
 		let mut pool = self.pool.write().await;
@@ -424,10 +422,11 @@ impl ServerHandler for Relay {
 			.partition_result();
 
 		self.metrics.clone().record(
-			&metrics::ListCall {
+			metrics::ListCall {
 				resource_type: "tool".to_string(),
+				params: vec![],
 			},
-			(),
+			&rq_ctx.identity,
 		);
 
 		Ok(ListToolsResult {
@@ -451,8 +450,7 @@ impl ServerHandler for Relay {
 		let rq_ctx = context.extensions.get::<RqCtx>().unwrap_or(&DEFAULT_RQ_CTX);
 		let span_context: &Context = &rq_ctx.context;
 		let tracer = trcng::get_tracer();
-		let _span = trcng::get_tracer()
-			.span_builder("call_tool")
+		let _span = trcng::start_span("call_tool", &rq_ctx.identity)
 			.with_kind(SpanKind::Server)
 			.start_with_context(tracer, span_context);
 		if !self.policies.validate(
@@ -479,24 +477,26 @@ impl ServerHandler for Relay {
 			arguments: request.arguments,
 		};
 
-		self.metrics.clone().record(
-			&metrics::ToolCall {
+		self.metrics.record(
+			metrics::ToolCall {
 				server: service_name.to_string(),
 				name: tool.to_string(),
+				params: vec![],
 			},
-			(),
+			&rq_ctx.identity,
 		);
 
 		match svc.call_tool(req, rq_ctx).await {
 			Ok(r) => Ok(r),
 			Err(e) => {
-				self.metrics.clone().record(
-					&metrics::ToolCallError {
+				self.metrics.record(
+					metrics::ToolCallError {
 						server: service_name.to_string(),
 						name: tool.to_string(),
 						error_type: e.error_code(),
+						params: vec![],
 					},
-					(),
+					&rq_ctx.identity,
 				);
 				Err(e.into())
 			},

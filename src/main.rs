@@ -175,7 +175,10 @@ async fn main() -> Result<()> {
 				ct.child_token(),
 				state.clone(),
 				update_rx,
-				Arc::new(relay::metrics::Metrics::new(&mut registry)),
+				Arc::new(relay::metrics::Metrics::new(
+					&mut registry,
+					cfg.metrics.as_ref().map(|c| c.tags.clone()),
+				)),
 				Arc::new(a2a::metrics::Metrics::new(&mut registry)),
 			)
 			.await;
@@ -245,7 +248,10 @@ async fn main() -> Result<()> {
 				ct.child_token(),
 				state.clone(),
 				update_rx,
-				Arc::new(relay::metrics::Metrics::new(&mut registry)),
+				Arc::new(relay::metrics::Metrics::new(
+					&mut registry,
+					cfg.metrics.as_ref().map(|c| c.tags.clone()),
+				)),
 				Arc::new(a2a::metrics::Metrics::new(&mut registry)),
 			)
 			.await;
