@@ -16,7 +16,7 @@
     </a>
   </div>
   <div>
-    The first <strong>full featured</strong>, <strong>enterprise-grade</strong> proxy for the MCP protocol.
+    The first <strong>full featured</strong>, <strong>enterprise-grade</strong> Agent first proxy.
   </div>
 </div>
 
@@ -26,7 +26,7 @@
 **Key Features:**
 
 - [x] **Highly performant:** agentproxy is written in rust, and is designed from the ground up to handle any scale you can throw at it.
-- [x] **Security First:** agentproxy includes a robust MCP focused RBAC system.
+- [x] **Security First:** agentproxy includes a robust MCP/A2A focused RBAC system.
 - [x] **Multi Tenant:** agentproxy supports multiple tenants, each with their own set of resources and users.
 - [x] **Dynamic:** agentproxy supports dynamic configuration updates via xDS, without any downtime.
 - [x] **Run Anywhere:** agentproxy can run anywhere, from a single machine to a large scale multi-tenant deployment.
@@ -52,10 +52,4 @@ cargo run -- -f examples/config/static.json
 Remote config file
 ```bash
 cargo run -- -f https://raw.githubusercontent.com/agentproxy/agentproxy/main/examples/config/static.json
-```
-
-**Test**
-
-```bash
-npx @modelcontextprotocol/inspector
 ```
