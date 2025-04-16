@@ -12,7 +12,10 @@ pub mod agentproxy {
 		#[allow(clippy::all)]
 		pub mod listener {
 			tonic::include_proto!("agentproxy.dev.listener");
-			include!(concat!(env!("OUT_DIR"), "/agentproxy.dev.listener.serde.rs"));
+			include!(concat!(
+				env!("OUT_DIR"),
+				"/agentproxy.dev.listener.serde.rs"
+			));
 		}
 
 		#[allow(clippy::all)]
@@ -24,14 +27,20 @@ pub mod agentproxy {
 			#[allow(clippy::all)]
 			pub mod target {
 				tonic::include_proto!("agentproxy.dev.mcp.target");
-				include!(concat!(env!("OUT_DIR"), "/agentproxy.dev.mcp.target.serde.rs"));
+				include!(concat!(
+					env!("OUT_DIR"),
+					"/agentproxy.dev.mcp.target.serde.rs"
+				));
 			}
 		}
 		pub mod a2a {
 			#[allow(clippy::all)]
 			pub mod target {
 				tonic::include_proto!("agentproxy.dev.a2a.target");
-				include!(concat!(env!("OUT_DIR"), "/agentproxy.dev.a2a.target.serde.rs"));
+				include!(concat!(
+					env!("OUT_DIR"),
+					"/agentproxy.dev.a2a.target.serde.rs"
+				));
 			}
 		}
 	}

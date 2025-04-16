@@ -19,4 +19,5 @@ pub const MCP_TARGET_TYPE: Strng =
 	strng::literal!("type.googleapis.com/agentproxy.dev.mcp.target.Target");
 pub const A2A_TARGET_TYPE: Strng =
 	strng::literal!("type.googleapis.com/agentproxy.dev.a2a.target.Target");
-pub const LISTENER_TYPE: Strng = strng::literal!("type.googleapis.com/agentproxy.dev.listener.Listener");
+pub const LISTENER_TYPE: Strng =
+	strng::literal!("type.googleapis.com/agentproxy.dev.listener.Listener");

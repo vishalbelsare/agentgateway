@@ -1,7 +1,7 @@
-use anyhow::Result;
-use clap::Parser;
 use agentproxy::r#static::{StaticConfig, run_local_client};
 use agentproxy::xds::Config as XdsConfig;
+use anyhow::Result;
+use clap::Parser;
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
