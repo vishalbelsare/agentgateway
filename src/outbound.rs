@@ -1,11 +1,11 @@
 use crate::proto;
-use crate::proto::aidp::dev::a2a::target::Target as XdsA2aTarget;
-use crate::proto::aidp::dev::common::BackendAuth as XdsAuth;
-use crate::proto::aidp::dev::common::BackendTls as XdsTls;
-use crate::proto::aidp::dev::mcp::target::Target as McpXdsTarget;
-use crate::proto::aidp::dev::mcp::target::target::OpenApiTarget as XdsOpenAPITarget;
-use crate::proto::aidp::dev::mcp::target::target::SseTarget as XdsSseTarget;
-use crate::proto::aidp::dev::mcp::target::target::Target as XdsTarget;
+use crate::proto::agentproxy::dev::a2a::target::Target as XdsA2aTarget;
+use crate::proto::agentproxy::dev::common::BackendAuth as XdsAuth;
+use crate::proto::agentproxy::dev::common::BackendTls as XdsTls;
+use crate::proto::agentproxy::dev::mcp::target::Target as McpXdsTarget;
+use crate::proto::agentproxy::dev::mcp::target::target::OpenApiTarget as XdsOpenAPITarget;
+use crate::proto::agentproxy::dev::mcp::target::target::SseTarget as XdsSseTarget;
+use crate::proto::agentproxy::dev::mcp::target::target::Target as XdsTarget;
 use openapiv3::OpenAPI;
 use rmcp::model::Tool;
 use serde::Serialize;

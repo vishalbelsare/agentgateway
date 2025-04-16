@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package aidp.dev.a2a.target;
+package agentproxy.dev.a2a.target;
 
 import "common.proto";
 
@@ -18,13 +18,13 @@ message Target {
   // The path of the target.
   string path = 5;
   // The headers of the target.
-  repeated aidp.dev.common.Header headers = 6;
+  repeated agentproxy.dev.common.Header headers = 6;
 
   // The auth of the target.
-  aidp.dev.common.BackendAuth auth = 7;
+  agentproxy.dev.common.BackendAuth auth = 7;
 
   // The tls of the target.
-  aidp.dev.common.BackendTls tls = 8;
+  agentproxy.dev.common.BackendTls tls = 8;
 
 }
 

@@ -2,43 +2,43 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mcp-proxy
+  name: agentproxy
   labels:
-    app: mcp-proxy
+    app: agentproxy
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mcp-proxy
+      app: agentproxy
   template:
     metadata:
       labels:
-        app: mcp-proxy
+        app: agentproxy
     spec:
       containers:
-        - name: mcp-proxy
-          image: ghcr.io/mcp-proxy/mcp-proxy:latest
+        - name: agentproxy
+          image: ghcr.io/agentproxy/agentproxy:latest
           args:
             - -f
-            - /etc/mcp-proxy/config.json
+            - /etc/agentproxy/config.json
           ports:
             - containerPort: 3000
           volumeMounts:
-            - name: mcp-proxy-config
-              mountPath: /etc/mcp-proxy/config.json
+            - name: agentproxy-config
+              mountPath: /etc/agentproxy/config.json
               subPath: config.json
       volumes:
-        - name: mcp-proxy-config
+        - name: agentproxy-config
           configMap:
-            name: mcp-proxy-config
+            name: agentproxy-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: mcp-proxy
+  name: agentproxy
 spec:
   selector:
-    app: mcp-proxy
+    app: agentproxy
   ports:
     - protocol: TCP
       port: 3000
@@ -63,15 +63,15 @@ spec:
     spec:
       containers:
         - name: everything
-          image: ghcr.io/mcp-proxy/mcp-proxy:latest-ext
+          image: ghcr.io/agentproxy/agentproxy:latest-ext
           args:
             - -f
-            - /etc/mcp-proxy/config.json
+            - /etc/agentproxy/config.json
           ports:
             - containerPort: 3000
           volumeMounts:
             - name: everything-config
-              mountPath: /etc/mcp-proxy/config.json
+              mountPath: /etc/agentproxy/config.json
               subPath: config.json
       volumes:
         - name: everything-config

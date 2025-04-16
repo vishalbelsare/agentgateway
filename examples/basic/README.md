@@ -1,6 +1,6 @@
 ## Basic Example
 
-This example shows how to use the mcp-proxy to proxy requests to the `everything` tool.
+This example shows how to use the agentproxy to proxy requests to the `everything` tool.
 
 ### Running the example
 
@@ -13,7 +13,7 @@ Let's look at the config to understand what's going on. First off we have a list
 ```json
   "listeners": [
     {
-      "sse": {
+    "sse": {
         "address": "0.0.0.0",
         "port": 3000
       }

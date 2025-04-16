@@ -11,7 +11,7 @@ on:
 
 
 env:
-  REGISTRY_IMAGE: ghcr.io/mcp-proxy/mcp-proxy
+  REGISTRY_IMAGE: ghcr.io/agentproxy-dev/agentproxy
 
 jobs:
   build-image:
@@ -165,7 +165,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: release-binary-${{ matrix.os }}
-        path: target/release/mcp-proxy
+        path: target/release/agentproxy
   release:
     needs:
     - ext-image
@@ -183,13 +183,13 @@ jobs:
       run: |
         ls -R
         mkdir outputs
-        mv release-binary-macos-latest/mcp-proxy outputs/mcp-proxy-darwin-arm64
-        mv release-binary-ubuntu-latest/mcp-proxy outputs/mcp-proxy-linux-amd64
-        mv release-binary-ubuntu-22.04-arm/mcp-proxy outputs/mcp-proxy-linux-arm64
+        mv release-binary-macos-latest/agentproxy outputs/agentproxy-darwin-arm64
+        mv release-binary-ubuntu-latest/agentproxy outputs/agentproxy-linux-amd64
+        mv release-binary-ubuntu-22.04-arm/agentproxy outputs/agentproxy-linux-arm64
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        files: outputs/mcp-proxy-*
+        files: outputs/agentproxy-*
         tag_name: ${{ github.ref_name }}
         body: "Automated release of ${{ github.ref_name }}."
       env:

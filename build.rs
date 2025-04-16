@@ -57,7 +57,7 @@ fn main() -> Result<(), anyhow::Error> {
 	match Command::new("common/scripts/report_build_info.sh").output() {
 		Ok(output) => {
 			for line in String::from_utf8(output.stdout).unwrap().lines() {
-				// Each line looks like `mcp-proxy.dev.buildGitRevision=abc`
+				// Each line looks like `agentproxy.dev.buildGitRevision=abc`
 				if let Some((key, value)) = line.split_once('=') {
 					#[allow(clippy::double_ended_iterator_last)]
 					let key = key.split('.').last().unwrap();
@@ -86,11 +86,11 @@ fn main() -> Result<(), anyhow::Error> {
 	pbjson_build::Builder::new()
 		.register_descriptors(&descriptor_set)?
 		.build(&[
-			".aidp.dev.a2a.target",
-			".aidp.dev.mcp.target",
-			".aidp.dev.common",
-			".aidp.dev.listener",
-			".aidp.dev.rbac",
+			".agentproxy.dev.a2a.target",
+			".agentproxy.dev.mcp.target",
+			".agentproxy.dev.common",
+			".agentproxy.dev.listener",
+			".agentproxy.dev.rbac",
 		])?;
 
 	Ok(())

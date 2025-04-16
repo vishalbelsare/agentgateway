@@ -15,16 +15,16 @@ COPY common ./common
 
 RUN cargo build --release
 
-RUN strip target/release/mcp-proxy
+RUN strip target/release/agentproxy
 
 FROM gcr.io/distroless/cc-debian12 AS runner 
 
 ARG TARGETARCH
 WORKDIR /app
 
-COPY --from=builder /app/target/release/mcp-proxy /app/mcp-proxy
+COPY --from=builder /app/target/release/agentproxy /app/agentproxy
 
-LABEL org.opencontainers.image.source=https://github.com/mcp-proxy/mcp-proxy
+LABEL org.opencontainers.image.source=https://github.com/agentproxy-dev/agentproxy
 LABEL org.opencontainers.image.description="MCP gw is a proxy for MCP."
 
-ENTRYPOINT ["/app/mcp-proxy"]
+ENTRYPOINT ["/app/agentproxy"]

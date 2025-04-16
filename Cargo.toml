@@ -1,5 +1,5 @@
 [package]
-name = "mcp-proxy"
+name = "agentproxy"
 version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
@@ -100,7 +100,7 @@ path = "src/lib.rs"
 bench = false
 
 [[bin]]
-name = "mcp-proxy"
+name = "agentproxy"
 path = "src/main.rs"
 bench = false
 

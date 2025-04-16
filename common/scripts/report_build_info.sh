@@ -17,10 +17,10 @@ GIT_DESCRIBE_TAG=$(git describe --tags --always)
 HUB=${HUB:-"ghcr.io/kagent-dev/mcp-relay"}
 
 # used by common/scripts/gobuild.sh
-echo "mcp-proxy.dev.buildVersion=${VERSION:-$BUILD_GIT_REVISION}"
-echo "mcp-proxy.dev.buildGitRevision=${BUILD_GIT_REVISION}"
-echo "mcp-proxy.dev.buildStatus=${tree_status}"
-echo "mcp-proxy.dev.buildTag=${GIT_DESCRIBE_TAG}"
-echo "mcp-proxy.dev.buildHub=${HUB}"
-echo "mcp-proxy.dev.buildOS=$(uname -s)"
-echo "mcp-proxy.dev.buildArch=$(uname -m)"
+echo "agentproxy.dev.buildVersion=${VERSION:-$BUILD_GIT_REVISION}"
+echo "agentproxy.dev.buildGitRevision=${BUILD_GIT_REVISION}"
+echo "agentproxy.dev.buildStatus=${tree_status}"
+echo "agentproxy.dev.buildTag=${GIT_DESCRIBE_TAG}"
+echo "agentproxy.dev.buildHub=${HUB}"
+echo "agentproxy.dev.buildOS=$(uname -s)"
+echo "agentproxy.dev.buildArch=$(uname -m)"

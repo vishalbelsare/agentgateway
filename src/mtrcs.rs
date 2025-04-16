@@ -7,9 +7,9 @@ use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-/// Creates a metrics sub registry for mcp-proxy.
+/// Creates a metrics sub registry for agentproxy.
 pub fn sub_registry(registry: &mut Registry) -> &mut Registry {
-	registry.sub_registry_with_prefix("mcp-proxy")
+	registry.sub_registry_with_prefix("agentproxy")
 }
 
 pub struct Deferred<'a, F, T>
@@ -139,7 +139,6 @@ pub async fn start(
 	ct: tokio_util::sync::CancellationToken,
 	cfg: Option<Config>,
 ) -> Result<(), std::io::Error> {
-	tracing::error!("howardjohn: START METRICS {cfg:?}");
 	let cfg = cfg.unwrap_or_default();
 	let listener = tokio::net::TcpListener::bind(format!("{}:{}", cfg.host, cfg.port)).await?;
 	let app = App::new(registry);

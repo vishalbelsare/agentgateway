@@ -12,7 +12,7 @@ interface SocialLinksProps {
 export function SocialLinks({ className = "", animated = true }: SocialLinksProps) {
   const links = [
     {
-      href: "https://github.com/placeholder/mcp-proxy",
+      href: "https://github.com/placeholder/agentproxy",
       icon: Github,
       label: "GitHub",
     },
@@ -22,7 +22,7 @@ export function SocialLinks({ className = "", animated = true }: SocialLinksProp
       label: "Discord",
     },
     {
-      href: "https://mcp-proxy.example.com",
+      href: "https://agentproxy.example.com",
       icon: Globe,
       label: "Website",
     },
