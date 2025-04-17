@@ -4,18 +4,30 @@ import { useState, useEffect } from "react";
 import { SetupWizard } from "@/components/setup-wizard";
 import { useLoading } from "@/lib/loading-context";
 import { useServer } from "@/lib/server-context";
+import { useWizard } from "@/lib/wizard-context";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 
 export default function Home() {
   const { isLoading, setIsLoading } = useLoading();
-  const { config, setConfig, isConnected, connectionError, listeners } = useServer();
+  const { config, setConfig, isConnected, connectionError, listeners, refreshListeners } =
+    useServer();
+  const { setIsWizardVisible } = useWizard();
 
   const [showWizard, setShowWizard] = useState(false);
+  const [wizardStarted, setWizardStarted] = useState(false);
   const [configUpdateMessage] = useState<{
     success: boolean;
     message: string;
   } | null>(null);
+
+  // Track if initial setup has been completed
+  const [initialSetupDone, setInitialSetupDone] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("initialSetupDone") === "true";
+    }
+    return false;
+  });
 
   // Update loading state based on connection status
   useEffect(() => {
@@ -24,15 +36,44 @@ export default function Home() {
     }
   }, [isConnected, setIsLoading]);
 
-  // If we have listeners, we don't need to show the wizard
+  // Refresh listeners when the component mounts
   useEffect(() => {
-    if (listeners.length > 0) {
-      setShowWizard(false);
-    } else {
-      // No listeners found, show the wizard
-      setShowWizard(true);
+    refreshListeners();
+  }, [refreshListeners]);
+
+  // Effect to handle initial setup completion
+  useEffect(() => {
+    if (listeners.length > 0 && !initialSetupDone) {
+      setInitialSetupDone(true);
+      localStorage.setItem("initialSetupDone", "true");
     }
-  }, [listeners]);
+  }, [listeners.length, initialSetupDone]);
+
+  // Effect to control wizard visibility
+  useEffect(() => {
+    // Only show wizard initially if there are no listeners
+    if (listeners.length === 0 && !wizardStarted) {
+      setShowWizard(true);
+      setWizardStarted(true);
+      setIsWizardVisible(true);
+    }
+  }, [listeners, setIsWizardVisible, wizardStarted]);
+
+  // Reset initial setup when wizard is manually restarted
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "restartWizard" && e.newValue === "true") {
+        setInitialSetupDone(false);
+        setShowWizard(true);
+        setWizardStarted(true);
+        setIsWizardVisible(true);
+        localStorage.removeItem("restartWizard");
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, [setIsWizardVisible]);
 
   const handleConfigChange = (newConfig: any) => {
     setConfig(newConfig);
@@ -40,10 +81,18 @@ export default function Home() {
 
   const handleWizardComplete = () => {
     setShowWizard(false);
+    setWizardStarted(false);
+    setIsWizardVisible(false);
+    setInitialSetupDone(true);
+    localStorage.setItem("initialSetupDone", "true");
   };
 
   const handleWizardSkip = () => {
     setShowWizard(false);
+    setWizardStarted(false);
+    setIsWizardVisible(false);
+    setInitialSetupDone(true);
+    localStorage.setItem("initialSetupDone", "true");
   };
 
   const renderContent = () => {
@@ -65,7 +114,7 @@ export default function Home() {
           onConfigChange={handleConfigChange}
           onComplete={handleWizardComplete}
           onSkip={handleWizardSkip}
-          serverAddress="0.0.0.0"
+          serverAddress="localhost"
           serverPort={19000}
         />
       );
@@ -77,7 +126,7 @@ export default function Home() {
           <div className="text-center">
             <h2 className="text-lg font-medium">Welcome to MCP Proxy</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Connecting to server at 0.0.0.0:19000...
+              Connecting to server at localhost:19000...
             </p>
           </div>
         </div>
@@ -106,7 +155,7 @@ export default function Home() {
           <div className="p-6 bg-card rounded-lg shadow-sm">
             <h3 className="text-lg font-medium mb-2">Security Policies</h3>
             <p className="text-muted-foreground">
-              {config.policies?.length} policy
+              {config.policies?.length} polic
               {config.policies?.length !== 1 ? "ies" : "y"} configured
             </p>
           </div>

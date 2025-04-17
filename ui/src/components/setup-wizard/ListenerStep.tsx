@@ -30,7 +30,7 @@ export function ListenerStep({
   onPrevious,
   config,
   onConfigChange,
-  serverAddress = "0.0.0.0",
+  serverAddress = "localhost",
   serverPort = 19000,
 }: ListenerStepProps) {
   const [listenerAddress, setListenerAddress] = useState("0.0.0.0");
@@ -66,13 +66,11 @@ export function ListenerStep({
       // Call the API to create/update the listener
       await createListener(serverAddress, serverPort, newListener);
 
-      console.log("Listener configuration updated:", newListener);
+      // Call onNext to navigate to the next step
       onNext();
-      return true;
     } catch (err) {
       console.error("Error updating listener configuration:", err);
       setError(err instanceof Error ? err.message : "Failed to update listener configuration");
-      return false;
     } finally {
       setIsUpdatingListener(false);
     }

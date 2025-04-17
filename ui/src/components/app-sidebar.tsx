@@ -53,7 +53,7 @@ export function AppSidebar({
   const [isDeletingListeners, setIsDeletingListeners] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
-  const {} = useServer();
+  const { refreshListeners } = useServer();
 
   const handleRestartWizard = () => {
     setShowRestartDialog(true);
@@ -65,16 +65,27 @@ export function AppSidebar({
       setIsLoading(true);
 
       // Fetch all listeners
-      const listeners = await fetchListeners("0.0.0.0", 19000);
+      const listeners = await fetchListeners("localhost", 19000);
 
       // Delete each listener
       for (const listener of listeners) {
-        // Create a unique identifier for each listener based on its properties
-        await deleteListener("0.0.0.0", 19000, listener);
+        await deleteListener("localhost", 19000, listener);
       }
 
       // Call the parent component's onRestartWizard function
       onRestartWizard();
+
+      // Refresh the listeners in the server context
+      await refreshListeners();
+
+      // Add a small delay to allow the server to process the deletions
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Trigger wizard restart
+      localStorage.setItem("restartWizard", "true");
+
+      // Navigate to the home page to trigger the setup wizard
+      navigateTo("/");
     } catch (error) {
       console.error("Error restarting wizard:", error);
     } finally {
@@ -150,13 +161,13 @@ export function AppSidebar({
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  tooltip="JSON Configuration"
-                  isActive={pathname === "/json"}
-                  onClick={() => navigateTo("/json")}
-                  aria-label="JSON Configuration"
+                  tooltip="Playground"
+                  isActive={pathname === "/playground"}
+                  onClick={() => navigateTo("/playground")}
+                  aria-label="Playground"
                 >
                   <Code className="h-4 w-4" />
-                  <span>JSON View</span>
+                  <span>Playground</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -179,9 +190,7 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Theme">
-              <ThemeToggle asChild className="flex items-center gap-2" />
-            </SidebarMenuButton>
+            <ThemeToggle asChild />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

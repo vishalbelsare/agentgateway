@@ -13,21 +13,11 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tracing::error;
-#[cfg(feature = "ui")]
-use {
-	http::header::{HeaderName, HeaderValue, Method},
-	include_dir::{Dir, include_dir},
-	tower_http::cors::CorsLayer,
-	tower_serve_static::ServeDir,
-};
 
-#[cfg(feature = "ui")]
-lazy_static::lazy_static! {
-	static ref ASSETS_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/ui/out");
-}
+pub use ui::add_cors_layer;
 
 #[derive(Clone)]
-struct App {
+pub(crate) struct App {
 	state: Arc<tokio::sync::RwLock<XdsStore>>,
 }
 
@@ -36,18 +26,8 @@ impl App {
 		Self { state }
 	}
 	fn router(&self) -> Router {
-		#[cfg(feature = "ui")]
-		let (cors, service) = {
-			let cors = CorsLayer::new()
-				.allow_origin("*".parse::<HeaderValue>().unwrap())
-				.allow_headers([HeaderName::from_static("content-type")])
-				.allow_methods([Method::GET, Method::POST, Method::DELETE]);
-
-			let service = ServeDir::new(&ASSETS_DIR);
-			(cors, service)
-		};
-
 		let router = Router::new()
+			// Redirect to the UI
 			.route(
 				"/targets/mcp",
 				get(targets_mcp_list_handler).post(targets_mcp_create_handler),
@@ -77,8 +57,9 @@ impl App {
 				get(listener_get_handler).delete(listener_delete_handler),
 			);
 
-		#[cfg(feature = "ui")]
-		let router = router.layer(cors).nest_service("/ui", service);
+		let router = ui::add_ui_layer(router);
+
+		let router = router.layer(ui::add_cors_layer());
 
 		router.with_state(self.clone())
 	}
@@ -391,5 +372,69 @@ async fn listener_delete_handler(
 				},
 			))
 		},
+	}
+}
+
+mod ui {
+	use super::*;
+	use crate::admin::App;
+	use http::{
+		HeaderName, HeaderValue, Method,
+		header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE},
+	};
+	use std::time::Duration;
+	use tower_http::cors::CorsLayer;
+
+	pub fn add_cors_layer() -> CorsLayer {
+		CorsLayer::new()
+			.allow_origin(
+				[
+					"http://localhost:3000",
+					"http://127.0.0.1:3000",
+					"http://0.0.0.0:19000",
+					"http://127.0.0.1:19000",
+				]
+				.map(|origin| origin.parse::<HeaderValue>().unwrap()),
+			)
+			.allow_headers([
+				CONTENT_TYPE,
+				AUTHORIZATION,
+				HeaderName::from_static("x-requested-with"),
+			])
+			.allow_methods([
+				Method::GET,
+				Method::POST,
+				Method::PUT,
+				Method::DELETE,
+				Method::OPTIONS,
+			])
+			.allow_credentials(true)
+			.expose_headers([CONTENT_TYPE, CONTENT_LENGTH])
+			.max_age(Duration::from_secs(3600))
+	}
+
+	#[cfg(feature = "ui")]
+	use {
+		axum::{Router, response::Redirect},
+		include_dir::{Dir, include_dir},
+		tower_serve_static::ServeDir,
+	};
+
+	#[cfg(feature = "ui")]
+	lazy_static::lazy_static! {
+		static ref ASSETS_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/ui/out");
+	}
+
+	#[cfg(feature = "ui")]
+	pub fn add_ui_layer(router: Router<App>) -> Router<App> {
+		let service = ServeDir::new(&ASSETS_DIR);
+		router
+			.nest_service("/ui", service)
+			.route("/", get(|| async { Redirect::permanent("/ui") }))
+	}
+
+	#[cfg(not(feature = "ui"))]
+	pub fn add_ui_layer(router: Router<App>) -> Router<App> {
+		router
 	}
 }

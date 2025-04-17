@@ -1,19 +1,32 @@
+FROM docker.io/library/node:23.11.0-bookworm AS node
+
+WORKDIR /app
+
+COPY ui .
+
+RUN npm install
+
+RUN npm run build
+
 FROM docker.io/library/rust:1.86.0-slim-bookworm AS builder 
 
 ARG TARGETARCH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    protobuf-compiler libssl-dev pkg-config \
+    protobuf-compiler make libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY Cargo.toml Cargo.lock build.rs ./
+
+COPY --from=node /app/out ./ui/out
+
+COPY Makefile Cargo.toml Cargo.lock build.rs ./
 COPY proto ./proto
 COPY src ./src
 COPY a2a-sdk ./a2a-sdk
 COPY common ./common
 
-RUN cargo build --release
+RUN make build
 
 RUN strip target/release/agentproxy
 

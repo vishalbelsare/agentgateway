@@ -92,9 +92,26 @@ export interface BackendTls {
 
 export interface Listener {
   // The name of the listener
-  name?: string;
+  name: string;
   // SSE is the only listener we can configure through UI
   sse: SseListener;
+  // The policies attached to this listener
+  policies?: RBACConfig[];
+}
+
+export interface RemoteDataSource {
+  url: string;
+}
+
+export interface JwtConfig {
+  issuer: string[];
+  audience: string[];
+  localJwks?: LocalDataSource;
+  remoteJwks?: RemoteDataSource;
+}
+
+export interface Authn {
+  jwt: JwtConfig;
 }
 
 export interface SseListener {
@@ -103,6 +120,7 @@ export interface SseListener {
   host?: string;
   port: number;
   tls?: TlsConfig;
+  authn?: Authn;
   // RBAC configuration is now part of the listener
   rbac?: RuleSet[];
 }
@@ -118,19 +136,16 @@ export interface StdioListener {
 }
 
 // Enum for matcher types
-export enum Matcher {
+export type Matcher =
   // The value must be equal to the value in the claims.
-  EQUALS = 0,
-  CONTAINS = 1,
-  STARTS_WITH = 2,
-  ENDS_WITH = 3,
-}
+  "EQUALS";
+//"CONTAINS" |
+//"STARTS_WITH" |
+//"ENDS_WITH"
 
-export enum ResourceType {
-  TOOL = 0,
-  PROMPT = 1,
-  RESOURCE = 2,
-}
+export type ResourceType = "TOOL"; //|
+// "PROMPT" |
+// "RESOURCE"
 
 export interface Rule {
   key: string;

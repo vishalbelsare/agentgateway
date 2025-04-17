@@ -1,3 +1,4 @@
+use crate::admin::add_cors_layer;
 use crate::authn;
 use crate::inbound;
 use crate::relay;
@@ -71,6 +72,7 @@ impl App {
 	pub fn router(&self) -> Router {
 		Router::new()
 			.route("/sse", get(sse_handler).post(post_event_handler))
+			.layer(add_cors_layer())
 			.with_state(self.clone())
 	}
 }

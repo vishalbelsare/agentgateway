@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -11,14 +11,13 @@ interface OpenAPITargetFormProps {
   onSubmit: (target: Target) => Promise<void>;
   isLoading: boolean;
   existingTarget?: Target;
+  hideSubmitButton?: boolean;
 }
 
-export function OpenAPITargetForm({
-  targetName,
-  onSubmit,
-  isLoading,
-  existingTarget,
-}: OpenAPITargetFormProps) {
+export const OpenAPITargetForm = forwardRef<
+  { submitForm: () => Promise<void> },
+  OpenAPITargetFormProps
+>(({ targetName, onSubmit, isLoading, existingTarget, hideSubmitButton = false }, ref) => {
   const [host, setHost] = useState("");
   const [port, setPort] = useState("");
   const [showOpenAPIAdvancedSettings, setShowOpenAPIAdvancedSettings] = useState(false);
@@ -81,8 +80,19 @@ export function OpenAPITargetForm({
     }
   };
 
+  useImperativeHandle(ref, () => ({
+    submitForm: handleSubmit,
+  }));
+
   return (
-    <div className="space-y-4 pt-4">
+    <form
+      id="mcp-target-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        handleSubmit();
+      }}
+      className="space-y-4 pt-4"
+    >
       <div className="space-y-2">
         <Label htmlFor="host">Host</Label>
         <Input
@@ -226,21 +236,25 @@ export function OpenAPITargetForm({
         </CollapsibleContent>
       </Collapsible>
 
-      <Button
-        onClick={handleSubmit}
-        className="w-full"
-        disabled={
-          isLoading || !host || !port || (schemaType === "file" ? !schemaFilePath : !schemaInline)
-        }
-      >
-        {isLoading
-          ? existingTarget
-            ? "Updating Target..."
-            : "Adding Target..."
-          : existingTarget
-            ? "Update OpenAPI Target"
-            : "Add OpenAPI Target"}
-      </Button>
-    </div>
+      {!hideSubmitButton && (
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={
+            isLoading || !host || !port || (schemaType === "file" ? !schemaFilePath : !schemaInline)
+          }
+        >
+          {isLoading
+            ? existingTarget
+              ? "Updating Target..."
+              : "Adding Target..."
+            : existingTarget
+              ? "Update OpenAPI Target"
+              : "Add OpenAPI Target"}
+        </Button>
+      )}
+    </form>
   );
-}
+});
+
+OpenAPITargetForm.displayName = "OpenAPITargetForm";

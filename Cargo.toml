@@ -11,7 +11,7 @@ members = [
 ]
 
 [features]
-default = ["gcp"]
+default = []
 gcp = ["dep:google-cloud-auth"]
 aws = ["dep:aws-config", "dep:aws-sdk-lambda", "dep:aws-smithy-runtime-api"]
 ui = ["dep:include_dir", "dep:tower-serve-static"]

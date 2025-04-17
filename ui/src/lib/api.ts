@@ -4,7 +4,6 @@ import { Target, Listener, Config } from "./types";
  * Updates a single target on the MCP proxy server
  */
 export async function updateTarget(address: string, port: number, target: Target): Promise<void> {
-  console.log("Updating target:", target);
   try {
     const response = await fetch(`http://${address}:${port}/targets`, {
       method: "POST",
@@ -36,7 +35,6 @@ export async function fetchListeners(address: string, port: number): Promise<Lis
     }
 
     const data = await response.json();
-    console.log("Raw listeners data from API:", data);
 
     // The API will return an array of listeners
     if (Array.isArray(data)) {

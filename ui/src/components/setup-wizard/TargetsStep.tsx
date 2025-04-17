@@ -8,10 +8,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { MCPLogo } from "@/components/mcp-logo";
 import { ArrowLeft, ArrowRight, Globe, Server, Terminal, Trash2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Info } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -34,13 +35,15 @@ export function TargetsStep({
   onPrevious,
   config,
   onConfigChange,
-  serverAddress = "0.0.0.0",
+  serverAddress = "localhost",
   serverPort = 19000,
 }: TargetsStepProps) {
   const [targetCategory, setTargetCategory] = useState<"mcp" | "a2a">("mcp");
   const [targetName, setTargetName] = useState("");
   const [isAddingTarget, setIsAddingTarget] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mcpFormRef, setMcpFormRef] = useState<{ submitForm: () => Promise<void> } | null>(null);
+  const [a2aFormRef, setA2aFormRef] = useState<{ submitForm: () => Promise<void> } | null>(null);
 
   const handleAddTarget = (target: Target) => {
     const newConfig = {
@@ -103,6 +106,23 @@ export function TargetsStep({
     return "sse";
   };
 
+  const handleNext = async () => {
+    try {
+      // If there's a target name entered, try to submit the current form
+      if (targetName) {
+        if (targetCategory === "mcp" && mcpFormRef) {
+          await mcpFormRef.submitForm();
+        } else if (targetCategory === "a2a" && a2aFormRef) {
+          await a2aFormRef.submitForm();
+        }
+      }
+      onNext();
+    } catch (err) {
+      console.error("Error submitting target:", err);
+      setError(err instanceof Error ? err.message : "Failed to create target");
+    }
+  };
+
   return (
     <Card className="w-full max-w-2xl">
       <CardHeader>
@@ -111,63 +131,57 @@ export function TargetsStep({
         </div>
         <CardTitle className="text-center">Configure Targets</CardTitle>
         <CardDescription className="text-center">
-          Add the servers that your proxy will forward requests to
+          Add and configure the servers that your proxy will forward requests to
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <h3 className="font-medium">What are Targets?</h3>
-            <p className="text-sm text-muted-foreground">
-              Targets are the destination servers that your proxy will forward requests to. You can
-              add multiple targets and configure their connection settings.
-            </p>
+        <div className="space-y-6">
+          {/* Target Configuration Form */}
+          <div className="space-y-6 border rounded-lg p-4">
+            <Tabs
+              value={targetCategory}
+              onValueChange={(value) => setTargetCategory(value as "mcp" | "a2a")}
+            >
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Target Type</Label>
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="mcp">MCP Target</TabsTrigger>
+                    <TabsTrigger value="a2a">A2A Target</TabsTrigger>
+                  </TabsList>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="targetName">Target Name</Label>
+                  <Input
+                    id="targetName"
+                    placeholder="Enter target name"
+                    value={targetName}
+                    onChange={(e) => setTargetName(e.target.value)}
+                  />
+                </div>
+
+                <TabsContent value="mcp">
+                  <MCPTargetForm
+                    targetName={targetName}
+                    onTargetNameChange={setTargetName}
+                    onSubmit={handleCreateTarget}
+                    isLoading={isAddingTarget}
+                    ref={setMcpFormRef}
+                  />
+                </TabsContent>
+
+                <TabsContent value="a2a">
+                  <A2ATargetForm
+                    targetName={targetName}
+                    onSubmit={handleCreateTarget}
+                    isLoading={isAddingTarget}
+                    ref={setA2aFormRef}
+                  />
+                </TabsContent>
+              </div>
+            </Tabs>
           </div>
-
-          <Tabs
-            value={targetCategory}
-            onValueChange={(value) => setTargetCategory(value as "mcp" | "a2a")}
-          >
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="mcp">MCP Target</TabsTrigger>
-              <TabsTrigger value="a2a">A2A Target</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="mcp" className="space-y-4 pt-4">
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  MCP (Model Control Protocol) targets are used to connect to AI model servers that
-                  support the MCP protocol. These are typically used for AI model inference and
-                  control.
-                </AlertDescription>
-              </Alert>
-
-              <MCPTargetForm
-                targetName={targetName}
-                onTargetNameChange={setTargetName}
-                onSubmit={handleCreateTarget}
-                isLoading={isAddingTarget}
-              />
-            </TabsContent>
-
-            <TabsContent value="a2a" className="space-y-4 pt-4">
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  A2A (Agent-to-Agent) targets are used to connect to other agent systems that
-                  support the A2A protocol. These are typically used for agent-to-agent
-                  communication and collaboration.
-                </AlertDescription>
-              </Alert>
-
-              <A2ATargetForm
-                targetName={targetName}
-                onSubmit={handleCreateTarget}
-                isLoading={isAddingTarget}
-              />
-            </TabsContent>
-          </Tabs>
 
           {error && (
             <Alert variant="destructive">
@@ -175,9 +189,10 @@ export function TargetsStep({
             </Alert>
           )}
 
+          {/* Configured Targets List */}
           {config.targets.length > 0 && (
-            <div className="mt-6">
-              <h3 className="font-medium mb-2">Configured Targets</h3>
+            <div className="space-y-2">
+              <h3 className="font-medium">Configured Targets</h3>
               <div className="space-y-2">
                 {config.targets.map((target, index) => (
                   <div
@@ -237,7 +252,7 @@ export function TargetsStep({
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
-        <Button onClick={onNext}>
+        <Button onClick={handleNext}>
           Complete Setup
           <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
