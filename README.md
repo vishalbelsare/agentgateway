@@ -2,6 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/agentproxy-dev/agentproxy/refs/heads/main/img/banner-light.svg" alt="agentproxy" width="400">
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/agentproxy-dev/agentproxy/refs/heads/main/img/banner-dark.svg" alt="agentproxy" width="400">
+    <img alt="agentproxy" src="https://raw.githubusercontent.com/agentproxy-dev/agentproxy/refs/heads/main/img/banner-light.svg">
   </picture>
   <div>
      <a href="https://discord.gg/BdJpzaPjHv">
