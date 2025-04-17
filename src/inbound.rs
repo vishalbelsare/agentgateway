@@ -11,6 +11,7 @@ use crate::rbac;
 use crate::relay;
 use crate::sse::App as SseApp;
 use crate::xds;
+use rmcp::service::RunningService;
 use rmcp::service::serve_server_with_ct;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -72,8 +73,7 @@ impl Listener {
 
 #[derive(Clone, Serialize, Debug)]
 pub struct SseListener {
-	host: String,
-	port: u32,
+	pub(crate) addr: SocketAddr,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	mode: Option<ListenerMode>,
 	#[serde(skip_serializing_if = "Option::is_none")]
@@ -115,9 +115,12 @@ impl SseListener {
 			.iter()
 			.map(rbac::RuleSet::try_from)
 			.collect::<Result<Vec<rbac::RuleSet>, anyhow::Error>>()?;
+
+		let addr: SocketAddr = format!("{}:{}", value.address, value.port)
+			.parse()
+			.map_err(|e| anyhow::anyhow!("error creating socket address: {:?}", e))?;
 		Ok(SseListener {
-			host: value.address,
-			port: value.port,
+			addr,
 			mode: None,
 			authn,
 			tls,
@@ -180,45 +183,48 @@ fn rustls_server_config(
 
 #[derive(Debug)]
 pub enum ServingError {
-	Sse(std::io::Error),
-	StdIo(tokio::task::JoinError),
+	Io(std::io::Error),
+	JoinError(tokio::task::JoinError),
 }
 
-impl Listener {
+enum BoundListener {
+	Sse(BoundSseListener),
+	A2a(BoundSseListener),
+	Stdio(BoundStdioListener),
+}
+
+struct BoundStdioListener {
+	listener: RunningService<rmcp::service::RoleServer, relay::Relay>,
+}
+
+impl BoundStdioListener {
+	pub async fn listen(self) -> Result<(), ServingError> {
+		self
+			.listener
+			.waiting()
+			.await
+			.map_err(ServingError::JoinError)
+			.map(|_| ())
+			.inspect_err(|e| {
+				tracing::error!("serving error: {:?}", e);
+			})
+	}
+}
+
+struct BoundSseListener {
+	listener: Listener,
+	net: tokio::net::TcpListener,
+}
+
+impl BoundSseListener {
 	pub async fn listen(
-		&self,
+		self,
 		state: Arc<tokio::sync::RwLock<xds::XdsStore>>,
 		metrics: Arc<relay::metrics::Metrics>,
 		a2a_metrics: Arc<a2a::metrics::Metrics>,
 		ct: tokio_util::sync::CancellationToken,
 	) -> Result<(), ServingError> {
-		match &self.spec {
-			ListenerType::Stdio => {
-				let relay = serve_server_with_ct(
-					relay::Relay::new(
-						state.clone(),
-						metrics,
-						Default::default(),
-						"stdio".to_string(),
-					),
-					(tokio::io::stdin(), tokio::io::stdout()),
-					ct,
-				)
-				.await
-				.inspect_err(|e| {
-					tracing::error!("serving error: {:?}", e);
-				})
-				.unwrap();
-				tracing::info!("serving stdio");
-				relay
-					.waiting()
-					.await
-					.map_err(ServingError::StdIo)
-					.map(|_| ())
-					.inspect_err(|e| {
-						tracing::error!("serving error: {:?}", e);
-					})
-			},
+		match &self.listener.spec {
 			ListenerType::Sse(sse_listener) => {
 				let authenticator = match &sse_listener.authn {
 					Some(authn) => Arc::new(tokio::sync::RwLock::new(Some(authn.clone()))),
@@ -236,30 +242,25 @@ impl Listener {
 						.map_err(|e| anyhow::anyhow!("error syncing jwks: {:?}", e))
 				});
 
-				let socket_addr: SocketAddr = format!("{}:{}", sse_listener.host, sse_listener.port)
-					.as_str()
-					.parse()
-					.unwrap();
-				let listener = tokio::net::TcpListener::bind(socket_addr).await.unwrap();
 				let child_token = ct.child_token();
 				let app = SseApp::new(
 					state.clone(),
 					metrics,
 					authenticator,
 					child_token,
-					self.name.clone(),
+					self.listener.name.clone(),
 				);
 				let router = app.router();
 
-				info!("serving sse on {}:{}", sse_listener.host, sse_listener.port);
+				info!("serving sse on {}", sse_listener.addr);
 				let child_token = ct.child_token();
 				match &sse_listener.tls {
 					Some(tls) => {
 						let tls_acceptor = TlsAcceptor::from(tls.inner.clone());
 						let axum_tls_acceptor = proxyprotocol::AxumTlsAcceptor::new(tls_acceptor);
 						let tls_listener = proxyprotocol::AxumTlsListener::new(
-							tls_listener::TlsListener::new(axum_tls_acceptor, listener),
-							socket_addr,
+							tls_listener::TlsListener::new(axum_tls_acceptor, self.net),
+							sse_listener.addr,
 							Some(&ListenerMode::Proxy) == sse_listener.mode.as_ref(),
 						);
 
@@ -273,7 +274,7 @@ impl Listener {
 									child_token.cancelled().await;
 								})
 								.await
-								.map_err(ServingError::Sse)
+								.map_err(ServingError::Io)
 								.inspect_err(|e| {
 									tracing::error!("serving error: {:?}", e);
 								})
@@ -283,7 +284,7 @@ impl Listener {
 					None => {
 						let enable_proxy = Some(&ListenerMode::Proxy) == sse_listener.mode.as_ref();
 
-						let listener = proxyprotocol::Listener::new(listener, enable_proxy);
+						let listener = proxyprotocol::Listener::new(self.net, enable_proxy);
 						let svc: axum::extract::connect_info::IntoMakeServiceWithConnectInfo<
 							axum::Router,
 							proxyprotocol::Address,
@@ -294,7 +295,7 @@ impl Listener {
 									child_token.cancelled().await;
 								})
 								.await
-								.map_err(ServingError::Sse)
+								.map_err(ServingError::Io)
 								.inspect_err(|e| {
 									tracing::error!("serving error: {:?}", e);
 								})
@@ -329,31 +330,25 @@ impl Listener {
 						.await
 						.map_err(|e| anyhow::anyhow!("error syncing jwks: {:?}", e))
 				});
-
-				let socket_addr: SocketAddr = format!("{}:{}", a2a_listener.host, a2a_listener.port)
-					.as_str()
-					.parse()
-					.unwrap();
-				let listener = tokio::net::TcpListener::bind(socket_addr).await.unwrap();
 				let child_token = ct.child_token();
 				let app = a2a::handlers::App::new(
 					state.clone(),
 					a2a_metrics,
 					authenticator,
 					child_token,
-					self.name.clone(),
+					self.listener.name.clone(),
 				);
 				let router = app.router();
 
-				info!("serving a2a on {}:{}", a2a_listener.host, a2a_listener.port);
+				info!("serving a2a on {}", a2a_listener.addr);
 				let child_token = ct.child_token();
 				match &a2a_listener.tls {
 					Some(tls) => {
 						let tls_acceptor = TlsAcceptor::from(tls.inner.clone());
 						let axum_tls_acceptor = proxyprotocol::AxumTlsAcceptor::new(tls_acceptor);
 						let tls_listener = proxyprotocol::AxumTlsListener::new(
-							tls_listener::TlsListener::new(axum_tls_acceptor, listener),
-							socket_addr,
+							tls_listener::TlsListener::new(axum_tls_acceptor, self.net),
+							a2a_listener.addr,
 							Some(&ListenerMode::Proxy) == a2a_listener.mode.as_ref(),
 						);
 
@@ -367,7 +362,7 @@ impl Listener {
 									child_token.cancelled().await;
 								})
 								.await
-								.map_err(ServingError::Sse)
+								.map_err(ServingError::Io)
 								.inspect_err(|e| {
 									tracing::error!("serving error: {:?}", e);
 								})
@@ -377,7 +372,7 @@ impl Listener {
 					None => {
 						let enable_proxy = Some(&ListenerMode::Proxy) == a2a_listener.mode.as_ref();
 
-						let listener = proxyprotocol::Listener::new(listener, enable_proxy);
+						let listener = proxyprotocol::Listener::new(self.net, enable_proxy);
 						let svc: axum::extract::connect_info::IntoMakeServiceWithConnectInfo<
 							axum::Router,
 							proxyprotocol::Address,
@@ -388,7 +383,7 @@ impl Listener {
 									child_token.cancelled().await;
 								})
 								.await
-								.map_err(ServingError::Sse)
+								.map_err(ServingError::Io)
 								.inspect_err(|e| {
 									tracing::error!("serving error: {:?}", e);
 								})
@@ -406,6 +401,57 @@ impl Listener {
 					}
 				}
 				Ok(())
+			},
+			ListenerType::Stdio => {
+				panic!("This code should not be reached");
+			},
+		}
+	}
+}
+
+impl Listener {
+	async fn bind(
+		&self,
+		state: Arc<tokio::sync::RwLock<xds::XdsStore>>,
+		metrics: Arc<relay::metrics::Metrics>,
+		ct: tokio_util::sync::CancellationToken,
+	) -> Result<BoundListener, ServingError> {
+		match &self.spec {
+			ListenerType::Sse(sse_listener) => {
+				let listener = tokio::net::TcpListener::bind(sse_listener.addr)
+					.await
+					.map_err(ServingError::Io)?;
+				Ok(BoundListener::Sse(BoundSseListener {
+					listener: self.clone(),
+					net: listener,
+				}))
+			},
+			ListenerType::A2a(a2a_listener) => {
+				let listener = tokio::net::TcpListener::bind(a2a_listener.addr)
+					.await
+					.map_err(ServingError::Io)?;
+				Ok(BoundListener::A2a(BoundSseListener {
+					listener: self.clone(),
+					net: listener,
+				}))
+			},
+			ListenerType::Stdio => {
+				let relay = serve_server_with_ct(
+					relay::Relay::new(
+						state.clone(),
+						metrics,
+						Default::default(),
+						"stdio".to_string(),
+					),
+					(tokio::io::stdin(), tokio::io::stdout()),
+					ct,
+				)
+				.await
+				.inspect_err(|e| {
+					tracing::error!("serving error: {:?}", e);
+				})
+				.map_err(ServingError::Io)?;
+				Ok(BoundListener::Stdio(BoundStdioListener { listener: relay }))
 			},
 		}
 	}
@@ -440,34 +486,13 @@ impl ListenerManager {
 	// Start all listeners in the state
 	// Consider these to be "static" listeners
 	pub async fn new(
-		ct: tokio_util::sync::CancellationToken,
 		state: Arc<tokio::sync::RwLock<xds::XdsStore>>,
 		update_rx: tokio::sync::mpsc::Receiver<xds::UpdateEvent>,
 		metrics: Arc<relay::metrics::Metrics>,
 		a2a_metrics: Arc<a2a::metrics::Metrics>,
 	) -> Self {
-		// Start all listeners in the state
-		// Consider these to be "static" listeners
-		let mut run_set = tokio::task::JoinSet::new();
-		let mut running: HashMap<String, AbortHandle> = HashMap::new();
-
-		for (name, listener) in state.read().await.listeners.iter() {
-			let state_clone = state.clone();
-			let metrics_clone = metrics.clone();
-			let a2a_metrics_clone = a2a_metrics.clone();
-			let ct_clone = ct.clone();
-			let listener_clone = listener.clone();
-			let listener_name = name.clone();
-			let abort_handle = run_set.spawn(async move {
-				listener_clone
-					.listen(state_clone, metrics_clone, a2a_metrics_clone, ct_clone)
-					.await
-			});
-			running.insert(listener_name, abort_handle);
-		}
-
-		// Start the update loop
-
+		let run_set = tokio::task::JoinSet::new();
+		let running: HashMap<String, AbortHandle> = HashMap::new();
 		Self {
 			state,
 			update_rx,
@@ -484,6 +509,13 @@ impl ListenerManager {
 		&mut self,
 		ct: tokio_util::sync::CancellationToken,
 	) -> Result<(), anyhow::Error> {
+		let initial_listeners = self.state.read().await.listeners.clone();
+
+		for (name, _) in initial_listeners.iter() {
+			let child_token = ct.child_token();
+			self.start_listener(name.clone(), child_token).await?;
+		}
+
 		loop {
 			tokio::select! {
 				result = self.run_set.join_next() => {
@@ -501,7 +533,12 @@ impl ListenerManager {
 					match update {
 						Some(xds::UpdateEvent::Insert(name)) => {
 							// Start the listener
-							self.start_listener(name, ct.child_token()).await;
+							match self.start_listener(name, ct.child_token()).await {
+								Ok(_) => {},
+								Err(e) => {
+									tracing::error!("Failed to start listener: {:?}", e);
+								},
+							}
 						}
 						Some(xds::UpdateEvent::Update(name)) => {
 							if let Some(handle) = self.running.remove(&name) {
@@ -512,7 +549,12 @@ impl ListenerManager {
 							}
 
 							// Start the listener
-							self.start_listener(name, ct.child_token()).await;
+							match self.start_listener(name, ct.child_token()).await {
+								Ok(_) => {},
+								Err(e) => {
+									tracing::error!("Failed to start listener: {:?}", e);
+								},
+							}
 						}
 						Some(xds::UpdateEvent::Remove(name)) => {
 								if let Some(handle) = self.running.remove(&name) {
@@ -538,7 +580,11 @@ impl ListenerManager {
 		Ok(())
 	}
 
-	async fn start_listener(&mut self, name: String, ct: tokio_util::sync::CancellationToken) {
+	async fn start_listener(
+		&mut self,
+		name: String,
+		ct: tokio_util::sync::CancellationToken,
+	) -> anyhow::Result<()> {
 		// Scope the read lock to get the listener and clone it
 		let listener_clone: Listener = {
 			let state = self.state.read().await;
@@ -546,24 +592,50 @@ impl ListenerManager {
 			match state.listeners.get(&name) {
 				Some(listener_ref) => listener_ref.clone(), // Clone the listener
 				None => {
-					tracing::error!("Failed to get listener {} from state", name);
-					return; // Skip spawning if listener fetch failed
+					return Err(anyhow::anyhow!(
+						"Failed to get listener {} from state",
+						name
+					));
 				},
 			}
 		}; // Read lock dropped here
 
+		let bound_listener = {
+			// Now use the owned listener_clone for spawning
+			let state_clone = self.state.clone();
+			let metrics_clone = self.mcp_metrics.clone();
+
+			// Spawn the task with the cloned listener and other cloned Arcs
+			let child_token = ct.child_token();
+			listener_clone
+				.bind(state_clone, metrics_clone, child_token)
+				.await
+				.map_err(|e| anyhow::anyhow!("Failed to bind listener: {:?}", e))?
+		};
+
 		// Now use the owned listener_clone for spawning
-		let state_clone = self.state.clone();
 		let metrics_clone = self.mcp_metrics.clone();
 		let a2a_metrics_clone = self.a2a_metrics.clone();
+		let state_clone = self.state.clone();
+		let child_token = ct.child_token();
 
-		// Spawn the task with the cloned listener and other cloned Arcs
 		let abort_handle = self.run_set.spawn(async move {
 			// Add async move
-			listener_clone
-				.listen(state_clone, metrics_clone, a2a_metrics_clone, ct)
-				.await
+			match bound_listener {
+				BoundListener::Sse(listener) => {
+					listener
+						.listen(state_clone, metrics_clone, a2a_metrics_clone, child_token)
+						.await
+				},
+				BoundListener::A2a(listener) => {
+					listener
+						.listen(state_clone, metrics_clone, a2a_metrics_clone, child_token)
+						.await
+				},
+				BoundListener::Stdio(listener) => listener.listen().await,
+			}
 		});
-		self.running.insert(name, abort_handle); // Store the JoinHandle
+		self.running.insert(name, abort_handle);
+		Ok(())
 	}
 }
