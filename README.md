@@ -9,7 +9,7 @@
       <img src="https://img.shields.io/discord/1346225185166065826?style=flat&label=Join%20Discord&color=6D28D9" alt="Discord">
     </a>
     <a href="https://github.com/agentproxy-dev/agentproxy/releases">
-      <img src="https://img.shields.io/github/v/release/agentproxy/agentproxy?style=flat&label=Latest%20Release&color=6D28D9" alt="Latest Release">
+      <img src="https://img.shields.io/github/v/release/agentproxy-dev/agentproxy?style=flat&label=Latest%20Release&color=6D28D9" alt="Latest Release">
     </a>
     <a href="https://github.com/agentproxy-dev/agentproxy/actions/workflows/release.yml">
       <img src="https://github.com/agentproxy-dev/agentproxy/actions/workflows/release.yml/badge.svg" alt="Release">
