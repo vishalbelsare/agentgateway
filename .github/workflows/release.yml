@@ -202,8 +202,11 @@ jobs:
         ls -R
         mkdir outputs
         mv release-binary-macos-latest/agentproxy outputs/agentproxy-darwin-arm64
+        sha256sum outputs/agentproxy-darwin-arm64 > outputs/agentproxy-darwin-arm64.sha256
         mv release-binary-ubuntu-latest/agentproxy outputs/agentproxy-linux-amd64
+        sha256sum outputs/agentproxy-linux-amd64 > outputs/agentproxy-linux-amd64.sha256
         mv release-binary-ubuntu-22.04-arm/agentproxy outputs/agentproxy-linux-arm64
+        sha256sum outputs/agentproxy-linux-arm64 > outputs/agentproxy-linux-arm64.sha256
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
