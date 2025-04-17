@@ -97,20 +97,21 @@ pub async fn start(
 }
 
 /// GET /targets/mcp  List all MCP targets
-/// GET /targets/mcp/:name  Get a MCP target by name
+/// GET /targets/mcp/{name}  Get a MCP target by name
 /// POST /targets/mcp  Create/update a MCP target
-/// DELETE /targets/mcp/:name  Delete a MCP target
+/// DELETE /targets/mcp/{name}  Delete a MCP target
 ///
 /// GET /targets/a2a  List all A2A targets
-/// GET /targets/a2a/:name  Get an A2A target by name
+/// GET /targets/a2a/{name}  Get an A2A target by name
 /// POST /targets/a2a  Create/update an A2A target
-/// DELETE /targets/a2a/:name  Delete an A2A target
+/// DELETE /targets/a2a/{name}  Delete an A2A target
 ///
 /// GET /listeners  List all listeners
-/// GET /listener/:name  Get a listener by name
+/// GET /listeners/{name}  Get a listener by name
 /// POST /listeners  Create/update a listener
-/// DELETE /listeners/:name  Delete a listener
+/// DELETE /listeners/{name}  Delete a listener
 ///
+/// GET /listeners/{name}/targets  List all targets for a listener
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ErrorResponse {
