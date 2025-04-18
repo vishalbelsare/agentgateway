@@ -18,7 +18,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { MCPLogo } from "@/components/mcp-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Target } from "@/lib/types";
 import {
   Dialog,
   DialogContent,
@@ -28,32 +27,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Loader2, Home, Shield, Headphones, Server, Code, Settings } from "lucide-react";
-import { fetchListeners, deleteListener } from "@/lib/api";
-import { useLoading } from "@/lib/loading-context";
 import { useRouter, usePathname } from "next/navigation";
-import { useServer } from "@/lib/server-context";
+import { useWizard } from "@/lib/wizard-context";
 
 interface AppSidebarProps {
   targets: any[];
   listeners: any[];
   activeView: string;
   setActiveView: (view: string) => void;
-  addTarget: (target: Target) => void;
-  onRestartWizard: () => void;
 }
 
-export function AppSidebar({
-  targets,
-  listeners,
-  setActiveView,
-  onRestartWizard,
-}: AppSidebarProps) {
-  const { setIsLoading } = useLoading();
+export function AppSidebar({ targets, listeners, setActiveView }: AppSidebarProps) {
   const [showRestartDialog, setShowRestartDialog] = useState(false);
-  const [isDeletingListeners, setIsDeletingListeners] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
-  const { refreshListeners } = useServer();
+  const { restartWizard, isRestartingWizard } = useWizard();
 
   const handleRestartWizard = () => {
     setShowRestartDialog(true);
@@ -61,36 +49,11 @@ export function AppSidebar({
 
   const confirmRestartWizard = async () => {
     try {
-      setIsDeletingListeners(true);
-      setIsLoading(true);
-
-      // Fetch all listeners
-      const listeners = await fetchListeners("localhost", 19000);
-
-      // Delete each listener
-      for (const listener of listeners) {
-        await deleteListener("localhost", 19000, listener);
-      }
-
-      // Call the parent component's onRestartWizard function
-      onRestartWizard();
-
-      // Refresh the listeners in the server context
-      await refreshListeners();
-
-      // Add a small delay to allow the server to process the deletions
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // Trigger wizard restart
-      localStorage.setItem("restartWizard", "true");
-
-      // Navigate to the home page to trigger the setup wizard
+      await restartWizard();
       navigateTo("/");
     } catch (error) {
       console.error("Error restarting wizard:", error);
     } finally {
-      setIsDeletingListeners(false);
-      setIsLoading(false);
       setShowRestartDialog(false);
     }
   };
@@ -190,7 +153,9 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <ThemeToggle asChild />
+            <SidebarMenuButton tooltip="Toggle Theme" aria-label="Toggle Theme">
+              <ThemeToggle asChild />
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
@@ -211,15 +176,15 @@ export function AppSidebar({
             <Button
               variant="destructive"
               onClick={confirmRestartWizard}
-              disabled={isDeletingListeners}
+              disabled={isRestartingWizard}
             >
-              {isDeletingListeners ? (
+              {isRestartingWizard ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Restarting...
                 </>
               ) : (
-                "Restart Wizard"
+                "Restart"
               )}
             </Button>
           </DialogFooter>

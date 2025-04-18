@@ -1,20 +1,37 @@
-import { Target, Listener, Config } from "./types";
+import { Target, Listener } from "./types";
+
+const API_URL = "http://localhost:19000";
 
 /**
  * Updates a single target on the MCP proxy server
  */
-export async function updateTarget(address: string, port: number, target: Target): Promise<void> {
+export async function updateTarget(target: Target): Promise<void> {
   try {
-    const response = await fetch(`http://${address}:${port}/targets`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(target),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to update target: ${response.status} ${response.statusText}`);
+    // Check if it's an mcp or a2a target
+    if (target.sse || target.stdio || target.openapi) {
+      const response = await fetch(`${API_URL}/targets/mcp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(target),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to update target: ${response.status} ${response.statusText}`);
+      }
+    } else if (target.a2a) {
+      const response = await fetch(`${API_URL}/targets/a2a`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(target),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to update target: ${response.status} ${response.statusText}`);
+      }
+    } else {
+      throw new Error("Invalid target type");
     }
   } catch (error) {
     console.error("Error updating target:", error);
@@ -25,9 +42,9 @@ export async function updateTarget(address: string, port: number, target: Target
 /**
  * Fetches the listener configuration from the MCP proxy server
  */
-export async function fetchListeners(address: string, port: number): Promise<Listener[]> {
+export async function fetchListeners(): Promise<Listener[]> {
   try {
-    const response = await fetch(`http://${address}:${port}/listeners`, {});
+    const response = await fetch(`${API_URL}/listeners`);
 
     if (!response.ok) {
       console.error("Failed to fetch listeners:", response);
@@ -65,9 +82,9 @@ export async function fetchListeners(address: string, port: number): Promise<Lis
 /**
  * Fetches all MCP targets from the proxy server
  */
-export async function fetchMcpTargets(address: string, port: number): Promise<any[]> {
+export async function fetchMcpTargets(): Promise<any[]> {
   try {
-    const response = await fetch(`http://${address}:${port}/targets/mcp`, {});
+    const response = await fetch(`${API_URL}/targets/mcp`, {});
 
     if (!response.ok) {
       throw new Error(`Failed to fetch MCP targets: ${response.status} ${response.statusText}`);
@@ -84,9 +101,9 @@ export async function fetchMcpTargets(address: string, port: number): Promise<an
 /**
  * Creates or updates an MCP target on the proxy server
  */
-export async function createMcpTarget(address: string, port: number, target: any): Promise<void> {
+export async function createMcpTarget(target: Target): Promise<void> {
   try {
-    const response = await fetch(`http://${address}:${port}/targets/mcp`, {
+    const response = await fetch(`${API_URL}/targets/mcp`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -106,9 +123,9 @@ export async function createMcpTarget(address: string, port: number, target: any
 /**
  * Fetches a specific MCP target by name
  */
-export async function getMcpTarget(address: string, port: number, name: string): Promise<any> {
+export async function getMcpTarget(name: string): Promise<any> {
   try {
-    const response = await fetch(`http://${address}:${port}/targets/mcp/${name}`, {});
+    const response = await fetch(`${API_URL}/targets/mcp/${name}`, {});
 
     if (!response.ok) {
       throw new Error(`Failed to fetch MCP target: ${response.status} ${response.statusText}`);
@@ -125,9 +142,9 @@ export async function getMcpTarget(address: string, port: number, name: string):
 /**
  * Deletes an MCP target by name
  */
-export async function deleteMcpTarget(address: string, port: number, name: string): Promise<void> {
+export async function deleteMcpTarget(name: string): Promise<void> {
   try {
-    const response = await fetch(`http://${address}:${port}/targets/mcp/${name}`, {
+    const response = await fetch(`${API_URL}/targets/mcp/${name}`, {
       method: "DELETE",
     });
 
@@ -143,9 +160,9 @@ export async function deleteMcpTarget(address: string, port: number, name: strin
 /**
  * Fetches all A2A targets from the proxy server
  */
-export async function fetchA2aTargets(address: string, port: number): Promise<any[]> {
+export async function fetchA2aTargets(): Promise<any[]> {
   try {
-    const response = await fetch(`http://${address}:${port}/targets/a2a`, {});
+    const response = await fetch(`${API_URL}/targets/a2a`, {});
 
     if (!response.ok) {
       throw new Error(`Failed to fetch A2A targets: ${response.status} ${response.statusText}`);
@@ -162,9 +179,9 @@ export async function fetchA2aTargets(address: string, port: number): Promise<an
 /**
  * Creates or updates an A2A target on the proxy server
  */
-export async function createA2aTarget(address: string, port: number, target: any): Promise<void> {
+export async function createA2aTarget(target: Target): Promise<void> {
   try {
-    const response = await fetch(`http://${address}:${port}/targets/a2a`, {
+    const response = await fetch(`${API_URL}/targets/a2a`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -184,9 +201,9 @@ export async function createA2aTarget(address: string, port: number, target: any
 /**
  * Fetches a specific A2A target by name
  */
-export async function getA2aTarget(address: string, port: number, name: string): Promise<any> {
+export async function getA2aTarget(name: string): Promise<any> {
   try {
-    const response = await fetch(`http://${address}:${port}/targets/a2a/${name}`, {});
+    const response = await fetch(`${API_URL}/targets/a2a/${name}`, {});
 
     if (!response.ok) {
       throw new Error(`Failed to fetch A2A target: ${response.status} ${response.statusText}`);
@@ -203,9 +220,9 @@ export async function getA2aTarget(address: string, port: number, name: string):
 /**
  * Deletes an A2A target by name
  */
-export async function deleteA2aTarget(address: string, port: number, name: string): Promise<void> {
+export async function deleteA2aTarget(name: string): Promise<void> {
   try {
-    const response = await fetch(`http://${address}:${port}/targets/a2a/${name}`, {
+    const response = await fetch(`${API_URL}/targets/a2a/${name}`, {
       method: "DELETE",
     });
 
@@ -221,13 +238,9 @@ export async function deleteA2aTarget(address: string, port: number, name: strin
 /**
  * Fetches targets associated with a specific listener
  */
-export async function fetchListenerTargets(
-  address: string,
-  port: number,
-  listenerName: string
-): Promise<any[]> {
+export async function fetchListenerTargets(listenerName: string): Promise<any[]> {
   try {
-    const response = await fetch(`http://${address}:${port}/listeners/${listenerName}/targets`, {});
+    const response = await fetch(`${API_URL}/listeners/${listenerName}/targets`, {});
 
     if (!response.ok) {
       throw new Error(
@@ -246,9 +259,9 @@ export async function fetchListenerTargets(
 /**
  * Fetches a specific listener by name
  */
-export async function getListener(address: string, port: number, name: string): Promise<Listener> {
+export async function getListener(name: string): Promise<Listener> {
   try {
-    const response = await fetch(`http://${address}:${port}/listeners/${name}`, {});
+    const response = await fetch(`${API_URL}/listeners/${name}`, {});
 
     if (!response.ok) {
       throw new Error(`Failed to fetch listener: ${response.status} ${response.statusText}`);
@@ -265,19 +278,18 @@ export async function getListener(address: string, port: number, name: string): 
 /**
  * Creates or updates a listener on the proxy server
  */
-export async function createListener(
-  address: string,
-  port: number,
-  listener: Listener
-): Promise<void> {
+export async function createListener(listener: Listener): Promise<void> {
   try {
-    const response = await fetch(`http://${address}:${port}/listeners`, {
+    const response = await fetch(`${API_URL}/listeners`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(listener),
     });
+    console.log("createListener listener", listener);
+
+    console.log("createListener response", response);
 
     if (!response.ok) {
       throw new Error(`Failed to create listener: ${response.status} ${response.statusText}`);
@@ -291,13 +303,9 @@ export async function createListener(
 /**
  * Creates a new listener on the MCP proxy server
  */
-export async function addListener(
-  address: string,
-  port: number,
-  listener: Listener
-): Promise<void> {
+export async function addListener(listener: Listener): Promise<void> {
   try {
-    const response = await fetch(`http://${address}:${port}/listeners`, {
+    const response = await fetch(`${API_URL}/listeners`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -317,16 +325,12 @@ export async function addListener(
 /**
  * Deletes a listener from the MCP proxy server
  */
-export async function deleteListener(
-  address: string,
-  port: number,
-  listener: Listener
-): Promise<void> {
+export async function deleteListener(listener: Listener): Promise<void> {
   try {
     // Extract the listener name or use a default if not available
     const listenerName = listener.name || "default";
 
-    const response = await fetch(`http://${address}:${port}/listeners/${listenerName}`, {
+    const response = await fetch(`${API_URL}/listeners/${listenerName}`, {
       method: "DELETE",
     });
 
@@ -339,23 +343,24 @@ export async function deleteListener(
   }
 }
 
-export async function getConfig(): Promise<Config> {
-  const response = await fetch("/api/config");
-  if (!response.ok) {
-    throw new Error("Failed to fetch configuration");
+/**
+ * Deletes all targets and listeners from the agentproxy server
+ */
+export async function deleteEverything(): Promise<void> {
+  const mcpTargets = await fetchMcpTargets();
+  for (const target of mcpTargets) {
+    await deleteMcpTarget(target.name);
   }
-  return response.json();
-}
 
-export async function updateConfig(config: Config): Promise<void> {
-  const response = await fetch("/api/config", {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(config),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to update configuration");
+  const a2aTargets = await fetchA2aTargets();
+  for (const target of a2aTargets) {
+    await deleteA2aTarget(target.name);
+  }
+  // Fetch all listeners
+  const listeners = await fetchListeners();
+
+  // Delete each listener
+  for (const listener of listeners) {
+    await deleteListener(listener);
   }
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -19,31 +19,37 @@ import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@/comp
 import { Config, Target, TargetType } from "@/lib/types";
 import { MCPTargetForm } from "./targets/MCPTargetForm";
 import { A2ATargetForm } from "./targets/A2ATargetForm";
-import { createMcpTarget, createA2aTarget } from "@/lib/api";
+import { createMcpTarget, createA2aTarget, fetchListeners } from "@/lib/api";
+import { ListenerSelect } from "./targets/ListenerSelect";
 
 interface TargetsStepProps {
   onNext: () => void;
   onPrevious: () => void;
   config: Config;
   onConfigChange: (config: Config) => void;
-  serverAddress?: string;
-  serverPort?: number;
 }
 
-export function TargetsStep({
-  onNext,
-  onPrevious,
-  config,
-  onConfigChange,
-  serverAddress = "localhost",
-  serverPort = 19000,
-}: TargetsStepProps) {
+export function TargetsStep({ onNext, onPrevious, config, onConfigChange }: TargetsStepProps) {
   const [targetCategory, setTargetCategory] = useState<"mcp" | "a2a">("mcp");
   const [targetName, setTargetName] = useState("");
+  const [selectedListeners, setSelectedListeners] = useState<string[]>([]);
   const [isAddingTarget, setIsAddingTarget] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mcpFormRef, setMcpFormRef] = useState<{ submitForm: () => Promise<void> } | null>(null);
   const [a2aFormRef, setA2aFormRef] = useState<{ submitForm: () => Promise<void> } | null>(null);
+
+  useEffect(() => {
+    const loadListeners = async () => {
+      try {
+        await fetchListeners();
+      } catch (err) {
+        console.error("Error fetching listeners:", err);
+        setError("Failed to load listeners. Please try again.");
+      }
+    };
+
+    loadListeners();
+  }, []);
 
   const handleAddTarget = (target: Target) => {
     const newConfig = {
@@ -66,14 +72,20 @@ export function TargetsStep({
     setError(null);
 
     try {
+      const targetWithListeners = {
+        ...target,
+        listeners: selectedListeners,
+      };
+
       if (targetCategory === "a2a") {
-        await createA2aTarget(serverAddress, serverPort, target);
+        await createA2aTarget(targetWithListeners);
       } else {
-        await createMcpTarget(serverAddress, serverPort, target);
+        await createMcpTarget(targetWithListeners);
       }
 
-      handleAddTarget(target);
+      handleAddTarget(targetWithListeners);
       setTargetName("");
+      setSelectedListeners([]);
     } catch (err) {
       console.error("Error creating target:", err);
       setError(err instanceof Error ? err.message : "Failed to create target");
@@ -108,13 +120,18 @@ export function TargetsStep({
 
   const handleNext = async () => {
     try {
-      // If there's a target name entered, try to submit the current form
-      if (targetName) {
+      // Check if there's an incomplete target being added
+      if (targetName.trim()) {
+        // If there's a target name entered, try to submit the current form
         if (targetCategory === "mcp" && mcpFormRef) {
           await mcpFormRef.submitForm();
         } else if (targetCategory === "a2a" && a2aFormRef) {
           await a2aFormRef.submitForm();
         }
+      } else if (config.targets.length === 0) {
+        // If no targets are configured and no target is being added, show error
+        setError("Please add at least one target before proceeding");
+        return;
       }
       onNext();
     } catch (err) {
@@ -152,12 +169,23 @@ export function TargetsStep({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="targetName">Target Name</Label>
+                  <Label htmlFor="targetName">Target Name *</Label>
                   <Input
                     id="targetName"
                     placeholder="Enter target name"
                     value={targetName}
-                    onChange={(e) => setTargetName(e.target.value)}
+                    onChange={(e) => {
+                      setTargetName(e.target.value);
+                      setError(null); // Clear error when user starts typing
+                    }}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <ListenerSelect
+                    selectedListeners={selectedListeners}
+                    onListenersChange={setSelectedListeners}
                   />
                 </div>
 
