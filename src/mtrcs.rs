@@ -7,6 +7,8 @@ use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
+use crate::admin::add_cors_layer;
+
 /// Creates a metrics sub registry for agentproxy.
 pub fn sub_registry(registry: &mut Registry) -> &mut Registry {
 	registry.sub_registry_with_prefix("agentproxy")
@@ -91,6 +93,7 @@ impl App {
 	fn router(&self) -> Router {
 		Router::new()
 			.route("/metrics", get(metrics_handler))
+			.layer(add_cors_layer())
 			.with_state(self.clone())
 	}
 }
