@@ -21,7 +21,7 @@ docker-ext:
 # build
 .PHONY: build
 build:
-	cargo build --release --features ui,gcp
+	cargo build --release --features ui
 
 # lint
 .PHONY: lint
