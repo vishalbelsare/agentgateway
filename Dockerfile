@@ -37,7 +37,7 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/agentproxy /app/agentproxy
 
-LABEL org.opencontainers.image.source=https://github.com/agentproxy-dev/agentproxy
+LABEL org.opencontainers.image.source=https://github.com/agentgateway/agentproxy
 LABEL org.opencontainers.image.description="MCP gw is a proxy for MCP."
 
 ENTRYPOINT ["/app/agentproxy"]

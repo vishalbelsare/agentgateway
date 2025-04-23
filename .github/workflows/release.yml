@@ -11,7 +11,7 @@ on:
 
 
 env:
-  REGISTRY_IMAGE: ghcr.io/agentproxy-dev/agentproxy
+  REGISTRY_IMAGE: ghcr.io/agentgateway/agentproxy
 
 jobs:
   build-image:

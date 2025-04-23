@@ -1,18 +1,18 @@
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/agentproxy-dev/agentproxy/refs/heads/main/img/banner-light.svg" alt="agentproxy" width="400">
-    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/agentproxy-dev/agentproxy/refs/heads/main/img/banner-dark.svg" alt="agentproxy" width="400">
-    <img alt="agentproxy" src="https://raw.githubusercontent.com/agentproxy-dev/agentproxy/refs/heads/main/img/banner-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/agentgateway/agentproxy/refs/heads/main/img/banner-light.svg" alt="agentproxy" width="400">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/agentgateway/agentproxy/refs/heads/main/img/banner-dark.svg" alt="agentproxy" width="400">
+    <img alt="agentproxy" src="https://raw.githubusercontent.com/agentgateway/agentproxy/refs/heads/main/img/banner-light.svg">
   </picture>
   <div>
      <a href="https://discord.gg/BdJpzaPjHv">
       <img src="https://img.shields.io/discord/1346225185166065826?style=flat&label=Join%20Discord&color=6D28D9" alt="Discord">
     </a>
-    <a href="https://github.com/agentproxy-dev/agentproxy/releases">
-      <img src="https://img.shields.io/github/v/release/agentproxy-dev/agentproxy?style=flat&label=Latest%20Release&color=6D28D9" alt="Latest Release">
+    <a href="https://github.com/agentgateway/agentproxy/releases">
+      <img src="https://img.shields.io/github/v/release/agentgateway/agentproxy?style=flat&label=Latest%20Release&color=6D28D9" alt="Latest Release">
     </a>
-    <a href="https://github.com/agentproxy-dev/agentproxy/actions/workflows/release.yml">
-      <img src="https://github.com/agentproxy-dev/agentproxy/actions/workflows/release.yml/badge.svg" alt="Release">
+    <a href="https://github.com/agentgateway/agentproxy/actions/workflows/release.yml">
+      <img src="https://github.com/agentgateway/agentproxy/actions/workflows/release.yml/badge.svg" alt="Release">
     </a>
   </div>
   <div>
@@ -51,5 +51,5 @@ cargo run -- -f examples/basic/config.json
 
 Remote config file
 ```bash
-cargo run -- -f https://raw.githubusercontent.com/agentproxy-dev/agentproxy/main/examples/basic/config.json
+cargo run -- -f https://raw.githubusercontent.com/agentgateway/agentproxy/main/examples/basic/config.json
 ```
