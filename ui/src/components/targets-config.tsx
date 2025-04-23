@@ -173,8 +173,10 @@ export const TargetsConfig = forwardRef<{ openAddTargetDialog: () => void }, Tar
         setTargetNameError("Target name is required.");
         return;
       }
-      if (!selectedListeners || selectedListeners.length === 0) {
-        setListenerError("At least one compatible listener must be selected.");
+      if (Array.isArray(selectedListeners) && selectedListeners.length === 0) {
+        setListenerError(
+          "At least one compatible listener must be selected, or choose 'All Listeners'."
+        );
         return;
       }
 
@@ -377,7 +379,6 @@ export const TargetsConfig = forwardRef<{ openAddTargetDialog: () => void }, Tar
 
               {showListenerSelection && (
                 <div className="space-y-2">
-                  <Label htmlFor="target-listeners">Associate with Listener(s) *</Label>
                   {noListenersFound && listenerError ? (
                     <Alert variant="default">
                       <AlertCircle className="h-4 w-4" />
@@ -390,9 +391,6 @@ export const TargetsConfig = forwardRef<{ openAddTargetDialog: () => void }, Tar
                         selectedListeners={selectedListeners}
                         onListenersChange={setSelectedListeners}
                       />
-                      <p className="text-xs text-muted-foreground">
-                        Select the listener(s) that can route requests to this target.
-                      </p>
                       {listenerError && !noListenersFound && (
                         <p className="text-xs text-destructive">{listenerError}</p>
                       )}
@@ -452,7 +450,7 @@ export const TargetsConfig = forwardRef<{ openAddTargetDialog: () => void }, Tar
                   noListenersFound ||
                   isSubmitting ||
                   !targetName.trim() ||
-                  !selectedListeners?.length
+                  (Array.isArray(selectedListeners) && selectedListeners.length === 0)
                 }
               >
                 {isSubmitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
