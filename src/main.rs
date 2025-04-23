@@ -110,7 +110,7 @@ async fn main() -> Result<()> {
 		(None, None) => {
 			// Check config dir
 			if let Ok(Some(config_dir)) = homedir::my_home() {
-				let config_dir = config_dir.join("agentproxy");
+				let config_dir = config_dir.join(".config/agentproxy");
 				let config_file = config_dir.join("config.json");
 
 				// Create the agentproxy directory if it doesn't exist
