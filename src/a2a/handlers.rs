@@ -1,5 +1,6 @@
 use crate::a2a::metrics;
 use crate::a2a::relay;
+use crate::admin::add_cors_layer;
 use crate::mtrcs::Recorder;
 use crate::sse::AuthError;
 use crate::{a2a, authn, proxyprotocol, rbac, trcng};
@@ -77,6 +78,7 @@ impl App {
 		Router::new()
 			.route("/{target}/.well-known/agent.json", get(agent_card_handler))
 			.route("/{target}", post(agent_call_handler))
+			.layer(add_cors_layer())
 			.with_state(self.clone())
 	}
 }
