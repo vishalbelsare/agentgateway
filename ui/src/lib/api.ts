@@ -1,4 +1,4 @@
-import { Target, Listener } from "./types";
+import { Target, Listener, ListenerProtocol } from "./types";
 
 const API_URL = "http://localhost:19000";
 
@@ -258,6 +258,11 @@ export async function fetchListenerTargets(listenerName: string): Promise<any[]>
   try {
     const response = await fetch(`${API_URL}/listeners/${listenerName}/targets`, {});
 
+    // Check if it's 404 and return an empty array
+    if (response.status === 404) {
+      return [];
+    }
+
     if (!response.ok) {
       throw new Error(
         `Failed to fetch listener targets: ${response.status} ${response.statusText}`
@@ -317,13 +322,38 @@ export async function createListener(listener: Listener): Promise<void> {
  */
 export async function addListener(listener: Listener): Promise<void> {
   try {
+    console.log("listener", listener);
+
+    // Convert protocol string to number for the backend
+    let protocolNumber: number;
+    switch (listener.protocol) {
+      case ListenerProtocol.MCP:
+        protocolNumber = 0;
+        break;
+      case ListenerProtocol.A2A:
+        protocolNumber = 1;
+        break;
+      default:
+        // Handle unexpected protocol value if necessary
+        console.error("Invalid listener protocol:", listener.protocol);
+        throw new Error("Invalid listener protocol");
+    }
+
+    // Prepare the payload with the numeric protocol
+    const payload = {
+      ...listener,
+      protocol: protocolNumber,
+    };
+
     const response = await fetch(`${API_URL}/listeners`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(listener),
+      body: JSON.stringify(payload), // Use the payload with numeric protocol
     });
+
+    console.log("response", response);
 
     if (!response.ok) {
       throw new Error(`Failed to add listener: ${response.status} ${response.statusText}`);
