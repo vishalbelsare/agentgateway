@@ -1,6 +1,6 @@
 # Image configuration
 DOCKER_REGISTRY ?= ghcr.io
-DOCKER_REPO ?= agentproxy-dev
+DOCKER_REPO ?= agentgateway
 IMAGE_NAME ?= agentproxy
 VERSION ?= $(shell git describe --tags --always --dirty)
 IMAGE_TAG ?= $(VERSION)
