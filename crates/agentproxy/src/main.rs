@@ -21,9 +21,9 @@ mod telemetry;
 use agent_proxy::Config;
 extern crate core;
 
+use agent_core::version;
 use std::sync::Arc;
 use tracing::info;
-use agent_core::version;
 
 fn main() -> anyhow::Result<()> {
 	let _log_flush = telemetry::setup_logging();

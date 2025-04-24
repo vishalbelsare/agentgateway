@@ -2,7 +2,6 @@ use std::env;
 use std::process::Command;
 
 fn main() {
-
 	let out_dir = env::var("OUT_DIR").unwrap();
 	// Adopted from https://github.com/uutils/coreutils/blob/main/src/uu/stdbuf/build.rs
 	let profile_name = out_dir
@@ -32,5 +31,4 @@ fn main() {
 		rustc_version::version().unwrap()
 	);
 	println!("cargo:rustc-env=MCPGW_BUILD_PROFILE_NAME={}", profile_name);
-
 }

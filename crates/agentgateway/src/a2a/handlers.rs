@@ -1,10 +1,10 @@
 use crate::a2a::metrics;
 use crate::a2a::relay;
 use crate::admin::add_cors_layer;
-use agent_core::metrics::Recorder;
 use crate::sse::AuthError;
 use crate::{a2a, authn, proxyprotocol, rbac, trcng};
 use a2a_sdk::AgentCard;
+use agent_core::metrics::Recorder;
 use axum::extract::{ConnectInfo, OptionalFromRequestParts, Path, State};
 use axum::response::sse::Event;
 use axum::response::{IntoResponse, Response, Sse};

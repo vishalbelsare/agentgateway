@@ -4,8 +4,8 @@ use prometheus_client::metrics::family::Family;
 use prometheus_client::registry::Registry;
 use std::collections::HashMap;
 
-use agent_core::metrics::Recorder;
 use crate::rbac;
+use agent_core::metrics::Recorder;
 
 pub struct Metrics {
 	tool_calls: Family<ToolCall, Counter>,

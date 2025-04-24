@@ -1,10 +1,10 @@
-use agent_core::metrics::Recorder;
 use crate::outbound::McpTargetSpec;
 use crate::outbound::backend;
 use crate::outbound::openapi;
 use crate::rbac;
 use crate::trcng;
 use crate::xds::XdsStore;
+use agent_core::metrics::Recorder;
 use http::HeaderName;
 use http::{HeaderMap, HeaderValue, header::AUTHORIZATION};
 use itertools::Itertools;

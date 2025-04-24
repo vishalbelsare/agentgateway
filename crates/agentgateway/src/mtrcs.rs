@@ -1,6 +1,6 @@
 use axum::{Router, extract::State, http::StatusCode, routing::get};
 use std::collections::HashMap;
-use std::{sync::Arc};
+use std::sync::Arc;
 
 use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry;
