@@ -1,6 +1,6 @@
 use crate::store::Event;
 use crate::types::agent::{Bind, BindName, Listener, ListenerName, ListenerSet, Route, RouteName};
-use crate::types::proto::adp::Resource as ADPResource;
+use crate::types::proto::agent::Resource as ADPResource;
 use crate::*;
 use agent_xds::{RejectedConfig, XdsUpdate};
 use futures_core::Stream;
@@ -10,10 +10,10 @@ use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tracing::Level;
 use tracing::instrument;
 
-use crate::types::proto::adp::Bind as XdsBind;
-use crate::types::proto::adp::Listener as XdsListener;
-use crate::types::proto::adp::Route as XdsRoute;
-use crate::types::proto::adp::resource::Kind as XdsKind;
+use crate::types::proto::agent::Bind as XdsBind;
+use crate::types::proto::agent::Listener as XdsListener;
+use crate::types::proto::agent::Route as XdsRoute;
+use crate::types::proto::agent::resource::Kind as XdsKind;
 
 #[derive(Debug)]
 pub struct Store {

@@ -9,8 +9,8 @@ pub mod workload {
 }
 #[allow(warnings)]
 #[warn(clippy::derive_partial_eq_without_eq)]
-pub mod adp {
-	tonic::include_proto!("istio.adp");
+pub mod agent {
+	tonic::include_proto!("agentgateway.dev.resource");
 }
 
 #[allow(clippy::enum_variant_names)]

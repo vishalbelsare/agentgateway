@@ -31,7 +31,6 @@ const NODE_NAME: &str = "NODE_NAME";
 const NAME: &str = "NAME";
 const NAMESPACE: &str = "NAMESPACE";
 const EMPTY_STR: &str = "";
-const ISTIO_METAJSON_PREFIX: &str = "ISTIO_METAJSON_";
 
 #[derive(Eq, Hash, PartialEq, Debug, Clone)]
 pub struct ResourceKey {
@@ -316,18 +315,6 @@ impl Config {
 		metadata
 			.fields
 			.append(&mut Self::build_struct(self.proxy_metadata.clone()).fields);
-
-		// Lookup ISTIO_METAJSON_* environment variables and add them to the node metadata
-		for (key, val) in std::env::vars().filter(|(key, _)| key.starts_with(ISTIO_METAJSON_PREFIX)) {
-			if let Ok(v) = serde_json::from_str(&val) {
-				metadata.fields.insert(
-					key.trim_start_matches(ISTIO_METAJSON_PREFIX).to_string(),
-					Self::json_to_value(v),
-				);
-			} else {
-				error!("failed to parse {}={}", key, val);
-			}
-		}
 
 		Node {
 			id: format!("ztunnel~{ip}~{pod_name}.{ns}~{ns}.svc.cluster.local"),

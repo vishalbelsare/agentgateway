@@ -369,10 +369,10 @@ pub enum IpFamily {
 	IPv6,
 }
 
-impl TryFrom<&proto::adp::TlsConfig> for TLSConfig {
+impl TryFrom<&proto::agent::TlsConfig> for TLSConfig {
 	type Error = anyhow::Error;
 
-	fn try_from(value: &proto::adp::TlsConfig) -> Result<Self, Self::Error> {
+	fn try_from(value: &proto::agent::TlsConfig) -> Result<Self, Self::Error> {
 		let cert_chain = parse_cert(&value.cert)?;
 		let private_key = parse_key(&value.private_key)?;
 		let mut sc = ServerConfig::builder_with_provider(transport::tls::provider())
@@ -388,13 +388,13 @@ impl TryFrom<&proto::adp::TlsConfig> for TLSConfig {
 	}
 }
 
-impl TryFrom<&proto::adp::RouteBackend> for RouteBackend {
+impl TryFrom<&proto::agent::RouteBackend> for RouteBackend {
 	type Error = ProtoError;
 
-	fn try_from(s: &proto::adp::RouteBackend) -> Result<Self, Self::Error> {
+	fn try_from(s: &proto::agent::RouteBackend) -> Result<Self, Self::Error> {
 		let kind = match &s.kind {
 			None => Backend::Invalid,
-			Some(proto::adp::route_backend::Kind::Service(svc_key)) => {
+			Some(proto::agent::route_backend::Kind::Service(svc_key)) => {
 				let ns = match svc_key.split_once('/') {
 					Some((namespace, hostname)) => Ok(NamespacedHostname {
 						namespace: namespace.into(),
@@ -419,10 +419,10 @@ impl TryFrom<&proto::adp::RouteBackend> for RouteBackend {
 	}
 }
 
-impl TryFrom<proto::adp::TrafficPolicy> for TrafficPolicy {
+impl TryFrom<proto::agent::TrafficPolicy> for TrafficPolicy {
 	type Error = ProtoError;
 
-	fn try_from(s: proto::adp::TrafficPolicy) -> Result<Self, Self::Error> {
+	fn try_from(s: proto::agent::TrafficPolicy) -> Result<Self, Self::Error> {
 		let req = s.request_timeout.map(|v| v.try_into()).transpose()?;
 		let backend = s
 			.backend_request_timeout
@@ -438,12 +438,12 @@ impl TryFrom<proto::adp::TrafficPolicy> for TrafficPolicy {
 	}
 }
 
-impl TryFrom<(proto::adp::Protocol, Option<&proto::adp::TlsConfig>)> for ListenerProtocol {
+impl TryFrom<(proto::agent::Protocol, Option<&proto::agent::TlsConfig>)> for ListenerProtocol {
 	type Error = ProtoError;
 	fn try_from(
-		value: (proto::adp::Protocol, Option<&proto::adp::TlsConfig>),
+		value: (proto::agent::Protocol, Option<&proto::agent::TlsConfig>),
 	) -> Result<Self, Self::Error> {
-		use proto::adp::Protocol;
+		use proto::agent::Protocol;
 		match (value.0, value.1) {
 			(Protocol::Unknown, _) => Err(ProtoError::EnumParse("unknown protocol".into())),
 			(Protocol::Http, None) => Ok(ListenerProtocol::HTTP),
@@ -472,10 +472,10 @@ impl TryFrom<(proto::adp::Protocol, Option<&proto::adp::TlsConfig>)> for Listene
 	}
 }
 
-impl TryFrom<&proto::adp::Bind> for Bind {
+impl TryFrom<&proto::agent::Bind> for Bind {
 	type Error = ProtoError;
 
-	fn try_from(s: &proto::adp::Bind) -> Result<Self, Self::Error> {
+	fn try_from(s: &proto::agent::Bind) -> Result<Self, Self::Error> {
 		Ok(Self {
 			name: s.name.clone().into(),
 			address: SocketAddr::from((IpAddr::from([0, 0, 0, 0]), s.port as u16)),
@@ -484,11 +484,11 @@ impl TryFrom<&proto::adp::Bind> for Bind {
 	}
 }
 
-impl TryFrom<&proto::adp::Listener> for (Listener, BindName) {
+impl TryFrom<&proto::agent::Listener> for (Listener, BindName) {
 	type Error = ProtoError;
 
-	fn try_from(s: &proto::adp::Listener) -> Result<Self, Self::Error> {
-		let proto = proto::adp::Protocol::try_from(s.protocol)?;
+	fn try_from(s: &proto::agent::Listener) -> Result<Self, Self::Error> {
+		let proto = proto::agent::Protocol::try_from(s.protocol)?;
 		let protocol = ListenerProtocol::try_from((proto, s.tls.as_ref()))
 			.map_err(|e| ProtoError::Generic(format!("{e}")))?;
 		let l = Listener {
@@ -502,10 +502,10 @@ impl TryFrom<&proto::adp::Listener> for (Listener, BindName) {
 	}
 }
 
-impl TryFrom<&proto::adp::Route> for (Route, ListenerName) {
+impl TryFrom<&proto::agent::Route> for (Route, ListenerName) {
 	type Error = ProtoError;
 
-	fn try_from(s: &proto::adp::Route) -> Result<Self, Self::Error> {
+	fn try_from(s: &proto::agent::Route) -> Result<Self, Self::Error> {
 		let r = Route {
 			name: strng::new(&s.name),
 			group_name: strng::new(&s.group),
@@ -533,23 +533,23 @@ impl TryFrom<&proto::adp::Route> for (Route, ListenerName) {
 	}
 }
 
-impl TryFrom<&proto::adp::RouteMatch> for RouteMatch {
+impl TryFrom<&proto::agent::RouteMatch> for RouteMatch {
 	type Error = ProtoError;
 
-	fn try_from(s: &proto::adp::RouteMatch) -> Result<Self, Self::Error> {
-		use proto::adp::path_match::*;
+	fn try_from(s: &proto::agent::RouteMatch) -> Result<Self, Self::Error> {
+		use proto::agent::path_match::*;
 		let path = match &s.path {
 			None => PathMatch::PathPrefix(strng::new("/")),
-			Some(proto::adp::PathMatch {
+			Some(proto::agent::PathMatch {
 				kind: Some(Kind::PathPrefix(prefix)),
 			}) => PathMatch::PathPrefix(strng::new(prefix)),
-			Some(proto::adp::PathMatch {
+			Some(proto::agent::PathMatch {
 				kind: Some(Kind::Exact(prefix)),
 			}) => PathMatch::Exact(strng::new(prefix)),
-			Some(proto::adp::PathMatch {
+			Some(proto::agent::PathMatch {
 				kind: Some(Kind::Regex(r)),
 			}) => PathMatch::Regex(regex::Regex::new(r)?, r.len()),
-			Some(proto::adp::PathMatch { kind: None }) => {
+			Some(proto::agent::PathMatch { kind: None }) => {
 				return Err(ProtoError::Generic("invalid path match".to_string()));
 			},
 		};
@@ -563,11 +563,11 @@ impl TryFrom<&proto::adp::RouteMatch> for RouteMatch {
 				None => Err(ProtoError::Generic(
 					"invalid header match value".to_string(),
 				)),
-				Some(proto::adp::header_match::Value::Exact(e)) => Ok(HeaderMatch {
+				Some(proto::agent::header_match::Value::Exact(e)) => Ok(HeaderMatch {
 					name: http::HeaderName::from_bytes(h.name.as_bytes())?,
 					value: HeaderValueMatch::Exact(http::HeaderValue::from_bytes(e.as_bytes())?),
 				}),
-				Some(proto::adp::header_match::Value::Regex(e)) => Ok(HeaderMatch {
+				Some(proto::agent::header_match::Value::Regex(e)) => Ok(HeaderMatch {
 					name: http::HeaderName::from_bytes(h.name.as_bytes())?,
 					value: HeaderValueMatch::Regex(regex::Regex::new(e)?),
 				}),
@@ -578,11 +578,11 @@ impl TryFrom<&proto::adp::RouteMatch> for RouteMatch {
 			.iter()
 			.map(|h| match &h.value {
 				None => Err(ProtoError::Generic("invalid query match value".to_string())),
-				Some(proto::adp::query_match::Value::Exact(e)) => Ok(QueryMatch {
+				Some(proto::agent::query_match::Value::Exact(e)) => Ok(QueryMatch {
 					name: strng::new(&h.name),
 					value: QueryValueMatch::Exact(strng::new(e)),
 				}),
-				Some(proto::adp::query_match::Value::Regex(e)) => Ok(QueryMatch {
+				Some(proto::agent::query_match::Value::Regex(e)) => Ok(QueryMatch {
 					name: strng::new(&h.name),
 					value: QueryValueMatch::Regex(regex::Regex::new(e)?),
 				}),
@@ -597,13 +597,13 @@ impl TryFrom<&proto::adp::RouteMatch> for RouteMatch {
 	}
 }
 
-impl TryFrom<&proto::adp::RouteFilter> for RouteFilter {
+impl TryFrom<&proto::agent::RouteFilter> for RouteFilter {
 	type Error = ProtoError;
 
-	fn try_from(s: &proto::adp::RouteFilter) -> Result<Self, Self::Error> {
+	fn try_from(s: &proto::agent::RouteFilter) -> Result<Self, Self::Error> {
 		Ok(match &s.kind {
 			None => return Err(ProtoError::Generic("invalid route filter".to_string())),
-			Some(proto::adp::route_filter::Kind::RequestHeaderModifier(rhm)) => {
+			Some(proto::agent::route_filter::Kind::RequestHeaderModifier(rhm)) => {
 				RouteFilter::RequestHeaderModifier(filters::HeaderModifier {
 					add: rhm
 						.add
@@ -618,7 +618,7 @@ impl TryFrom<&proto::adp::RouteFilter> for RouteFilter {
 					remove: rhm.remove.iter().map(strng::new).collect(),
 				})
 			},
-			Some(proto::adp::route_filter::Kind::RequestRedirect(rd)) => {
+			Some(proto::agent::route_filter::Kind::RequestRedirect(rd)) => {
 				RouteFilter::RequestRedirect(filters::RequestRedirect {
 					scheme: default_as_none(rd.scheme.as_str())
 						.map(uri::Scheme::try_from)
@@ -630,10 +630,10 @@ impl TryFrom<&proto::adp::RouteFilter> for RouteFilter {
 						(None, None) => None,
 					},
 					path: match &rd.path {
-						Some(proto::adp::request_redirect::Path::Full(f)) => {
+						Some(proto::agent::request_redirect::Path::Full(f)) => {
 							Some(PathRedirect::Full(strng::new(f)))
 						},
-						Some(proto::adp::request_redirect::Path::Prefix(f)) => {
+						Some(proto::agent::request_redirect::Path::Prefix(f)) => {
 							Some(PathRedirect::Prefix(strng::new(f)))
 						},
 						None => None,
@@ -643,19 +643,21 @@ impl TryFrom<&proto::adp::RouteFilter> for RouteFilter {
 						.transpose()?,
 				})
 			},
-			Some(proto::adp::route_filter::Kind::UrlRewrite(rw)) => {
+			Some(proto::agent::route_filter::Kind::UrlRewrite(rw)) => {
 				RouteFilter::UrlRewrite(filters::UrlRewrite {
 					authority: default_as_none(rw.host.as_str()).map(|h| HostRedirect::Host(strng::new(h))),
 					path: match &rw.path {
-						Some(proto::adp::url_rewrite::Path::Full(f)) => Some(PathRedirect::Full(strng::new(f))),
-						Some(proto::adp::url_rewrite::Path::Prefix(f)) => {
+						Some(proto::agent::url_rewrite::Path::Full(f)) => {
+							Some(PathRedirect::Full(strng::new(f)))
+						},
+						Some(proto::agent::url_rewrite::Path::Prefix(f)) => {
 							Some(PathRedirect::Prefix(strng::new(f)))
 						},
 						None => None,
 					},
 				})
 			},
-			Some(proto::adp::route_filter::Kind::ResponseHeaderModifier(rhm)) => {
+			Some(proto::agent::route_filter::Kind::ResponseHeaderModifier(rhm)) => {
 				RouteFilter::ResponseHeaderModifier(filters::HeaderModifier {
 					add: rhm
 						.add
@@ -670,11 +672,11 @@ impl TryFrom<&proto::adp::RouteFilter> for RouteFilter {
 					remove: rhm.remove.iter().map(strng::new).collect(),
 				})
 			},
-			Some(proto::adp::route_filter::Kind::RequestMirror(m)) => {
+			Some(proto::agent::route_filter::Kind::RequestMirror(m)) => {
 				RouteFilter::RequestMirror(filters::RequestMirror {
 					backend: match &m.kind {
 						None => Backend::Invalid,
-						Some(proto::adp::request_mirror::Kind::Service(svc_key)) => {
+						Some(proto::agent::request_mirror::Kind::Service(svc_key)) => {
 							let ns = match svc_key.split_once('/') {
 								Some((namespace, hostname)) => Ok(NamespacedHostname {
 									namespace: namespace.into(),

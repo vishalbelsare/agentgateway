@@ -3,7 +3,7 @@
 fn main() -> Result<(), anyhow::Error> {
 	let proto_files = [
 		"proto/ext_proc.proto",
-		"proto/adp.proto",
+		"proto/resource.proto",
 		"proto/workload.proto",
 	]
 	.iter()

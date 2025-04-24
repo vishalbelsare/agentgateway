@@ -9,9 +9,9 @@ use tracing_core::field::Value;
 
 use crate::strng::{RichStrng, Strng};
 
-/// Creates a metrics sub registry for Istio.
+/// Creates a metrics sub registry for agentgateway.
 pub fn sub_registry(registry: &mut Registry) -> &mut Registry {
-	registry.sub_registry_with_prefix("istio")
+	registry.sub_registry_with_prefix("agentgateway")
 }
 
 pub struct Deferred<'a, F, T>
