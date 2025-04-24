@@ -1,6 +1,5 @@
 pub mod admin;
 pub mod authn;
-pub mod drain;
 pub mod inbound;
 pub mod mtrcs;
 pub mod outbound;
