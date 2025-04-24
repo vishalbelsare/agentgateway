@@ -17,7 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY . .
+
+COPY Makefile Cargo.toml Cargo.lock build.rs ./
+COPY crates ./crates
+COPY common ./common
 COPY --from=node /app/out ./ui/out
 RUN --mount=type=cache,id=cargo,target=/usr/local/cargo/registry cargo fetch --locked
 RUN --mount=type=cache,id=cargo,target=/usr/local/cargo/registry make build

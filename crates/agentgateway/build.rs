@@ -54,7 +54,7 @@ fn main() -> Result<(), anyhow::Error> {
 		.nth_back(3)
 		.unwrap();
 
-	match Command::new("../common/scripts/report_build_info.sh").output() {
+	match Command::new("../../common/scripts/report_build_info.sh").output() {
 		Ok(output) => {
 			for line in String::from_utf8(output.stdout).unwrap().lines() {
 				// Each line looks like `agentgateway.dev.buildGitRevision=abc`

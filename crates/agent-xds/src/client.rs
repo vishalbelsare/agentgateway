@@ -268,35 +268,6 @@ impl Config {
 		Struct { fields }
 	}
 
-	fn json_to_struct(json: serde_json::Map<String, serde_json::Value>) -> prost_types::Struct {
-		prost_types::Struct {
-			fields: json
-				.into_iter()
-				.map(|(k, v)| (k, Self::json_to_value(v)))
-				.collect(),
-		}
-	}
-
-	fn json_to_value(json: serde_json::Value) -> prost_types::Value {
-		use prost_types::value::Kind::*;
-		use serde_json::Value::*;
-
-		prost_types::Value {
-			kind: Some(match json {
-				Null => NullValue(0),
-				Bool(v) => BoolValue(v),
-				Number(n) => NumberValue(n.as_f64().unwrap_or_else(|| {
-					error!("error parsing JSON number: {}", n);
-					0f64
-				})),
-				String(s) => StringValue(s),
-				Array(v) => ListValue(prost_types::ListValue {
-					values: v.into_iter().map(Self::json_to_value).collect(),
-				}),
-				Object(v) => StructValue(Self::json_to_struct(v)),
-			}),
-		}
-	}
 	fn node(&self) -> Node {
 		let ip = std::env::var(INSTANCE_IP);
 		let ip = ip.as_deref().unwrap_or(DEFAULT_IP);

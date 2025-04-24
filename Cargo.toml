@@ -1,19 +1,19 @@
 [workspace]
 resolver = "2"
 members = [
-  "a2a-sdk",
-  "agent-core",
-  "agent-xds",
-  "agent-hbone",
-  "agent-proxy",
-  "agentgateway"
+  "crates/a2a-sdk",
+  "crates/agent-core",
+  "crates/agent-xds",
+  "crates/agent-hbone",
+  "crates/agent-proxy",
+  "crates/agentgateway"
 ]
 
 [workspace.dependencies]
-a2a-sdk = { version = "0.4.0", path = "a2a-sdk" }
-agent-core = { path = "agent-core" }
-agent-hbone = { path = "agent-hbone" }
-agent-xds = { path = "agent-xds" }
+a2a-sdk = { version = "0.4.0", path = "crates/a2a-sdk" }
+agent-core = { path = "crates/agent-core" }
+agent-hbone = { path = "crates/agent-hbone" }
+agent-xds = { path = "crates/agent-xds" }
 anyhow = "1.0"
 arcstr = { version = "1.2", features = ["serde"]  }
 async-stream = "0.3.6"
