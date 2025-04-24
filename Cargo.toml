@@ -13,6 +13,7 @@ members = [
 a2a-sdk = { version = "0.4.0", path = "a2a-sdk" }
 agent-core = { path = "agent-core" }
 agent-hbone = { path = "agent-hbone" }
+agent-xds = { path = "agent-xds" }
 anyhow = "1.0"
 arcstr = { version = "1.2", features = ["serde"]  }
 async-stream = "0.3.6"

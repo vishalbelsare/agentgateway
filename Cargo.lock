@@ -66,6 +66,7 @@ version = "0.0.0"
 dependencies = [
  "agent-core",
  "agent-hbone",
+ "agent-xds",
  "anyhow",
  "async-trait",
  "axum-core",

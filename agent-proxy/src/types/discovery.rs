@@ -16,11 +16,40 @@ use std::net::IpAddr;
 use std::ops::Deref;
 use std::str::FromStr;
 
-#[derive(Debug, Eq, PartialEq, Hash, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct NamespacedHostname {
 	pub namespace: Strng,
 	pub hostname: Strng,
+}
+
+impl FromStr for NamespacedHostname {
+	type Err = ProtoError;
+
+	fn from_str(value: &str) -> Result<Self, Self::Err> {
+		let Some((namespace, hostname)) = value.split_once('/') else {
+			return Err(ProtoError::NamespacedHostnameParse(value.to_string()));
+		};
+		Ok(Self {
+			namespace: namespace.into(),
+			hostname: hostname.into(),
+		})
+	}
+}
+
+// we need custom serde serialization since NamespacedHostname is keying maps
+impl Serialize for NamespacedHostname {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+	S: Serializer,
+	{
+		serializer.collect_str(&self)
+	}
+}
+
+impl fmt::Display for NamespacedHostname {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "{}/{}", self.namespace, self.hostname)
+	}
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -333,6 +362,14 @@ impl Service {
 			namespace: self.namespace.clone(),
 			hostname: self.hostname.clone(),
 		}
+	}
+	pub fn should_include_endpoint(&self, ep_health: HealthStatus) -> bool {
+		ep_health == HealthStatus::Healthy
+		|| self
+		.load_balancer
+		.as_ref()
+		.map(|lb| lb.health_policy == LoadBalancerHealthPolicy::AllowAll)
+		.unwrap_or(false)
 	}
 }
 

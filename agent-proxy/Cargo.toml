@@ -12,8 +12,9 @@ default = ["tls-ring"]
 tls-ring = ["rustls/ring", "tokio-rustls/ring"]
 
 [dependencies]
-agent-core .workspace = true
-agent-hbone .workspace = true
+agent-core.workspace = true
+agent-hbone.workspace = true
+agent-xds.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
