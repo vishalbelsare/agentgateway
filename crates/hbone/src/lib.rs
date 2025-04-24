@@ -22,6 +22,8 @@ pub trait Key: Display + Clone + Hash + Debug + PartialEq + Eq + Send + Sync + '
 	fn dest(&self) -> SocketAddr;
 }
 
+#[derive(serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Config {
 	pub window_size: u32,
 	pub connection_window_size: u32,

@@ -1,20 +1,24 @@
 [package]
-name = "agent-proxy"
-version = "0.0.0"
-edition = "2024"
-rust-version = "1.85"
-
-[lib]
-path = "src/lib.rs"
+name = "agent-proxy-app"
+version = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+publish = { workspace = true }
 
 [features]
 default = ["tls-ring"]
 tls-ring = ["rustls/ring", "tokio-rustls/ring"]
 
+[[bin]]
+name = "agent-proxy"
+path = "src/main.rs"
+bench = false
+
 [dependencies]
 agent-core.workspace = true
 agent-hbone.workspace = true
 agent-xds.workspace = true
+agent-proxy.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
@@ -48,11 +52,14 @@ regex.workspace = true
 serde_regex.workspace = true
 hex.workspace = true
 minijinja.workspace = true
-
-[build-dependencies]
-tonic-build.workspace = true
-prost-build.workspace = true
-anyhow.workspace = true
+once_cell.workspace = true
+tracing-core.workspace = true
+tracing-log.workspace = true
+tracing-subscriber.workspace = true
+serde_json.workspace = true
+tracing-appender.workspace = true
+serde_yaml.workspace = true
+duration-str.workspace = true
 
 [lints.clippy]
 # This rule makes code more confusing

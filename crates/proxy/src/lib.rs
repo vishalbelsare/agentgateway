@@ -34,11 +34,13 @@ fn serialize_option_display<S: Serializer, T: Display>(
 	}
 }
 
+#[derive(serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Config {
 	pub network: Strng,
-	backend_mesh: bool,
-	self_termination_deadline: Duration,
-	hbone: Arc<agent_hbone::Config>,
+	pub backend_mesh: bool,
+	pub self_termination_deadline: Duration,
+	pub hbone: Arc<agent_hbone::Config>,
 }
 
 #[derive(Clone, Debug)]

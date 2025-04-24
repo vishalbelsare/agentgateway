@@ -2,18 +2,27 @@
 resolver = "2"
 members = [
   "crates/a2a-sdk",
-  "crates/agent-core",
-  "crates/agent-xds",
-  "crates/agent-hbone",
-  "crates/agent-proxy",
+  "crates/core",
+  "crates/xds",
+  "crates/hbone",
+  "crates/proxy",
+  "crates/agentproxy",
   "crates/agentgateway"
 ]
 
+[workspace.package]
+version = "0.4.12"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+publish = false
+
 [workspace.dependencies]
 a2a-sdk = { version = "0.4.0", path = "crates/a2a-sdk" }
-agent-core = { path = "crates/agent-core" }
-agent-hbone = { path = "crates/agent-hbone" }
-agent-xds = { path = "crates/agent-xds" }
+agent-core = { path = "crates/core" }
+agent-hbone = { path = "crates/hbone" }
+agent-xds = { path = "crates/xds" }
+agent-proxy = { path = "crates/proxy" }
 anyhow = "1.0"
 arcstr = { version = "1.2", features = ["serde"]  }
 async-stream = "0.3.6"
@@ -93,6 +102,9 @@ tower-http = { version = "0.5" , features = ["cors"] }
 tower-serve-static = "0.1.1"
 tracing = "0.1.41"
 tracing-core = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry", "json"] }
+tracing-appender = "0.2"
+tracing-log = "0.2"
 url = "2.5"
 wiremock = "0.6.3"
+duration-str = "0.17"
