@@ -7,7 +7,11 @@ rust-version = "1.85"
 [workspace]
 resolver = "2"
 members = [
-  "a2a-sdk"
+  "a2a-sdk",
+  "agent-core",
+  "agent-xds",
+  "agent-hbone",
+  "agent-proxy",
 ]
 
 [features]
