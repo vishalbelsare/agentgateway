@@ -1,3 +1,10 @@
+use crate::types::proto::workload::ApplicationTunnel as XdsApplicationTunnel;
+use crate::types::proto::workload::GatewayAddress as XdsGatewayAddress;
+use crate::types::proto::workload::Service as XdsService;
+use crate::types::proto::workload::Workload as XdsWorkload;
+use crate::types::proto::workload::load_balancing::Scope as XdsScope;
+use crate::types::proto::workload::{Port, PortList};
+use crate::types::proto::{ProtoError, workload};
 use crate::*;
 use anyhow::anyhow;
 use prometheus_client::encoding::{EncodeLabelValue, LabelValueEncoder};
@@ -6,6 +13,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fmt::{Formatter, Write};
 use std::net::IpAddr;
+use std::ops::Deref;
 use std::str::FromStr;
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, serde::Serialize)]
@@ -445,5 +453,340 @@ impl EndpointSet {
 
 	pub fn iter(&self) -> impl Iterator<Item = &Endpoint> {
 		self.inner.values().map(Arc::as_ref)
+	}
+}
+
+impl From<workload::TunnelProtocol> for InboundProtocol {
+	fn from(value: workload::TunnelProtocol) -> Self {
+		match value {
+			workload::TunnelProtocol::Hbone => InboundProtocol::HBONE,
+			workload::TunnelProtocol::None => InboundProtocol::TCP,
+		}
+	}
+}
+
+impl From<workload::NetworkMode> for NetworkMode {
+	fn from(value: workload::NetworkMode) -> Self {
+		match value {
+			workload::NetworkMode::Standard => NetworkMode::Standard,
+			workload::NetworkMode::HostNetwork => NetworkMode::HostNetwork,
+		}
+	}
+}
+impl From<workload::Locality> for Locality {
+	fn from(value: workload::Locality) -> Self {
+		Locality {
+			region: value.region.into(),
+			zone: value.zone.into(),
+			subzone: value.subzone.into(),
+		}
+	}
+}
+
+impl From<workload::WorkloadStatus> for HealthStatus {
+	fn from(value: workload::WorkloadStatus) -> Self {
+		match value {
+			workload::WorkloadStatus::Healthy => HealthStatus::Healthy,
+			workload::WorkloadStatus::Unhealthy => HealthStatus::Unhealthy,
+		}
+	}
+}
+impl From<&PortList> for HashMap<u16, u16> {
+	fn from(value: &PortList) -> Self {
+		value
+			.ports
+			.iter()
+			.map(|p| (p.service_port as u16, p.target_port as u16))
+			.collect()
+	}
+}
+
+impl From<HashMap<u16, u16>> for PortList {
+	fn from(value: HashMap<u16, u16>) -> Self {
+		PortList {
+			ports: value
+				.iter()
+				.map(|(k, v)| Port {
+					service_port: *k as u32,
+					app_protocol: 0,
+					target_port: *v as u32,
+				})
+				.collect(),
+		}
+	}
+}
+
+impl TryFrom<&XdsGatewayAddress> for GatewayAddress {
+	type Error = ProtoError;
+
+	fn try_from(value: &workload::GatewayAddress) -> Result<Self, Self::Error> {
+		let gw_addr: GatewayAddress = match &value.destination {
+			Some(a) => match a {
+				workload::gateway_address::Destination::Address(addr) => GatewayAddress {
+					destination: gatewayaddress::Destination::Address(network_addr(
+						strng::new(&addr.network),
+						byte_to_ip(&Bytes::copy_from_slice(&addr.address))?,
+					)),
+					hbone_mtls_port: value.hbone_mtls_port as u16,
+				},
+				workload::gateway_address::Destination::Hostname(hn) => GatewayAddress {
+					destination: gatewayaddress::Destination::Hostname(NamespacedHostname {
+						namespace: Strng::from(&hn.namespace),
+						hostname: Strng::from(&hn.hostname),
+					}),
+					hbone_mtls_port: value.hbone_mtls_port as u16,
+				},
+			},
+			None => return Err(ProtoError::MissingGatewayAddress),
+		};
+		Ok(gw_addr)
+	}
+}
+
+impl TryFrom<XdsWorkload> for Workload {
+	type Error = ProtoError;
+	fn try_from(resource: XdsWorkload) -> Result<Self, Self::Error> {
+		let (w, _): (Workload, HashMap<String, PortList>) = resource.try_into()?;
+		Ok(w)
+	}
+}
+
+impl TryFrom<XdsWorkload> for (Workload, HashMap<String, PortList>) {
+	type Error = ProtoError;
+	fn try_from(resource: XdsWorkload) -> Result<Self, Self::Error> {
+		let wp = match &resource.waypoint {
+			Some(w) => Some(GatewayAddress::try_from(w)?),
+			None => None,
+		};
+
+		let network_gw = match &resource.network_gateway {
+			Some(w) => Some(GatewayAddress::try_from(w)?),
+			None => None,
+		};
+
+		let addresses = resource
+			.addresses
+			.iter()
+			.map(byte_to_ip)
+			.collect::<Result<Vec<_>, _>>()?;
+
+		let workload_type = resource.workload_type().as_str_name().to_lowercase();
+		let services: Vec<NamespacedHostname> = resource
+			.services
+			.keys()
+			.map(|namespaced_host| match namespaced_host.split_once('/') {
+				Some((namespace, hostname)) => Ok(NamespacedHostname {
+					namespace: namespace.into(),
+					hostname: hostname.into(),
+				}),
+				None => Err(ProtoError::NamespacedHostnameParse(namespaced_host.clone())),
+			})
+			.collect::<Result<_, _>>()?;
+		let wl = Workload {
+			workload_ips: addresses,
+			waypoint: wp,
+			network_gateway: network_gw,
+
+			protocol: InboundProtocol::from(workload::TunnelProtocol::try_from(
+				resource.tunnel_protocol,
+			)?),
+			network_mode: NetworkMode::from(workload::NetworkMode::try_from(resource.network_mode)?),
+
+			uid: resource.uid.into(),
+			name: resource.name.into(),
+			namespace: resource.namespace.into(),
+			trust_domain: {
+				let result = resource.trust_domain;
+				if result.is_empty() {
+					"cluster.local".into()
+				} else {
+					result.into()
+				}
+			},
+			service_account: {
+				let result = resource.service_account;
+				if result.is_empty() {
+					"default".into()
+				} else {
+					result.into()
+				}
+			},
+			node: resource.node.into(),
+			hostname: resource.hostname.into(),
+			network: resource.network.into(),
+			workload_name: resource.workload_name.into(),
+			workload_type: workload_type.into(),
+			canonical_name: resource.canonical_name.into(),
+			canonical_revision: resource.canonical_revision.into(),
+
+			status: HealthStatus::from(workload::WorkloadStatus::try_from(resource.status)?),
+
+			authorization_policies: resource
+				.authorization_policies
+				.iter()
+				.map(strng::new)
+				.collect(),
+
+			locality: resource.locality.map(Locality::from).unwrap_or_default(),
+
+			cluster_id: {
+				let result = resource.cluster_id;
+				if result.is_empty() {
+					"Kubernetes".into()
+				} else {
+					result.into()
+				}
+			},
+
+			capacity: resource.capacity.unwrap_or(1),
+			services,
+		};
+		// Return back part we did not use (service) so it can be consumed without cloning
+		Ok((wl, resource.services))
+	}
+}
+
+pub fn byte_to_ip(b: &Bytes) -> Result<IpAddr, ProtoError> {
+	match b.len() {
+		4 => {
+			let v: [u8; 4] = b.deref().try_into().expect("size already proven");
+			Ok(IpAddr::from(v))
+		},
+		16 => {
+			let v: [u8; 16] = b.deref().try_into().expect("size already proven");
+			Ok(IpAddr::from(v))
+		},
+		n => Err(ProtoError::ByteAddressParse(n)),
+	}
+}
+
+pub fn network_addr(network: Strng, vip: IpAddr) -> NetworkAddress {
+	NetworkAddress {
+		network,
+		address: vip,
+	}
+}
+
+impl TryFrom<&XdsService> for Service {
+	type Error = ProtoError;
+
+	fn try_from(s: &XdsService) -> Result<Self, Self::Error> {
+		let mut nw_addrs = Vec::new();
+		for addr in &s.addresses {
+			let network_address = network_addr(
+				strng::new(&addr.network),
+				byte_to_ip(&Bytes::copy_from_slice(&addr.address))?,
+			);
+			nw_addrs.push(network_address);
+		}
+		let waypoint = match &s.waypoint {
+			Some(w) => Some(GatewayAddress::try_from(w)?),
+			None => None,
+		};
+		let lb = if let Some(lb) = &s.load_balancing {
+			Some(LoadBalancer {
+				routing_preferences: lb
+					.routing_preference
+					.iter()
+					.map(|r| {
+						workload::load_balancing::Scope::try_from(*r)
+							.map_err(ProtoError::EnumError)
+							.and_then(|r| r.try_into())
+					})
+					.collect::<Result<Vec<LoadBalancerScopes>, ProtoError>>()?,
+				mode: workload::load_balancing::Mode::try_from(lb.mode)?.into(),
+				health_policy: workload::load_balancing::HealthPolicy::try_from(lb.health_policy)?.into(),
+			})
+		} else {
+			None
+		};
+		let app_protocols = s
+			.ports
+			.iter()
+			.map(|p| {
+				let ap = workload::AppProtocol::try_from(p.app_protocol)?;
+				let ap = <Option<AppProtocol>>::from(ap);
+				Ok(ap.map(|ap| (p.service_port as u16, ap)))
+			})
+			.filter_map(|v| match v {
+				Ok(None) => None,
+				Ok(Some(ap)) => Some(Ok(ap)),
+				Err(e) => Some(Err(e)),
+			})
+			.collect::<Result<HashMap<_, _>, ProtoError>>()?;
+		let ip_families = workload::IpFamilies::try_from(s.ip_families)?.into();
+		let svc = Service {
+			name: Strng::from(&s.name),
+			namespace: Strng::from(&s.namespace),
+			hostname: Strng::from(&s.hostname),
+			vips: nw_addrs,
+			ports: (&PortList {
+				ports: s.ports.clone(),
+			})
+				.into(),
+			app_protocols,
+			endpoints: Default::default(), // Will be populated once inserted into the store.
+			subject_alt_names: s.subject_alt_names.iter().map(strng::new).collect(),
+			waypoint,
+			load_balancer: lb,
+			ip_families,
+		};
+		Ok(svc)
+	}
+}
+
+impl From<workload::IpFamilies> for Option<IpFamily> {
+	fn from(value: workload::IpFamilies) -> Self {
+		match value {
+			workload::IpFamilies::Automatic => None,
+			workload::IpFamilies::Ipv4Only => Some(IpFamily::IPv4),
+			workload::IpFamilies::Ipv6Only => Some(IpFamily::IPv6),
+			workload::IpFamilies::Dual => Some(IpFamily::Dual),
+		}
+	}
+}
+
+impl From<workload::AppProtocol> for Option<AppProtocol> {
+	fn from(value: workload::AppProtocol) -> Self {
+		match value {
+			workload::AppProtocol::Unknown => None,
+			workload::AppProtocol::Http11 => Some(AppProtocol::Http11),
+			workload::AppProtocol::Http2 => Some(AppProtocol::Http2),
+			workload::AppProtocol::Grpc => Some(AppProtocol::Grpc),
+		}
+	}
+}
+
+impl From<workload::load_balancing::Mode> for LoadBalancerMode {
+	fn from(value: workload::load_balancing::Mode) -> Self {
+		match value {
+			workload::load_balancing::Mode::Strict => LoadBalancerMode::Strict,
+			workload::load_balancing::Mode::Failover => LoadBalancerMode::Failover,
+			workload::load_balancing::Mode::UnspecifiedMode => LoadBalancerMode::Standard,
+		}
+	}
+}
+
+impl From<workload::load_balancing::HealthPolicy> for LoadBalancerHealthPolicy {
+	fn from(value: workload::load_balancing::HealthPolicy) -> Self {
+		match value {
+			workload::load_balancing::HealthPolicy::OnlyHealthy => LoadBalancerHealthPolicy::OnlyHealthy,
+			workload::load_balancing::HealthPolicy::AllowAll => LoadBalancerHealthPolicy::AllowAll,
+		}
+	}
+}
+
+impl TryFrom<XdsScope> for LoadBalancerScopes {
+	type Error = ProtoError;
+	fn try_from(value: XdsScope) -> Result<Self, Self::Error> {
+		match value {
+			XdsScope::Region => Ok(LoadBalancerScopes::Region),
+			XdsScope::Zone => Ok(LoadBalancerScopes::Zone),
+			XdsScope::Subzone => Ok(LoadBalancerScopes::Subzone),
+			XdsScope::Node => Ok(LoadBalancerScopes::Node),
+			XdsScope::Cluster => Ok(LoadBalancerScopes::Cluster),
+			XdsScope::Network => Ok(LoadBalancerScopes::Network),
+			_ => Err(ProtoError::EnumParse("invalid target".to_string())),
+		}
 	}
 }
