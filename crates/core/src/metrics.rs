@@ -64,19 +64,19 @@ pub trait DeferRecorder {
 
 pub trait Recorder<E, T> {
 	/// Record the given event
-	fn record(&self, event: &E, meta: T);
+	fn record(&self, event: E, meta: T);
 }
 
 pub trait IncrementRecorder<E>: Recorder<E, u64> {
 	/// Record the given event by incrementing the counter by count
-	fn increment(&self, event: &E);
+	fn increment(&self, event: E);
 }
 
 impl<E, R> IncrementRecorder<E> for R
 where
 	R: Recorder<E, u64>,
 {
-	fn increment(&self, event: &E) {
+	fn increment(&self, event: E) {
 		self.record(event, 1);
 	}
 }

@@ -16,7 +16,7 @@ use tracing::{Instrument, debug, error, info, info_span, warn};
 use super::envoy::service::discovery::v3::Resource as ProtoResource;
 use super::envoy::service::discovery::v3::aggregated_discovery_service_client::AggregatedDiscoveryServiceClient;
 use super::envoy::service::discovery::v3::*;
-use crate::mtrcs::{IncrementRecorder, Recorder};
+use agent_core::metrics::{IncrementRecorder, Recorder};
 use crate::xds::metrics::{ConnectionTerminationReason, Metrics};
 use agent_core::strng;
 use agent_core::strng::Strng;

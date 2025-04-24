@@ -3,7 +3,7 @@ use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::registry::Registry;
 
-use crate::mtrcs::Recorder;
+use agent_core::metrics::Recorder;
 
 pub struct Metrics {
 	agent_calls: Family<AgentCall, Counter>,

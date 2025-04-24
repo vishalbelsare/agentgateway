@@ -1,4 +1,4 @@
-use crate::mtrcs::Recorder;
+use agent_core::metrics::Recorder;
 use crate::outbound::McpTargetSpec;
 use crate::outbound::backend;
 use crate::outbound::openapi;

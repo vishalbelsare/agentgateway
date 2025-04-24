@@ -1,7 +1,7 @@
 use crate::a2a::metrics;
 use crate::a2a::relay;
 use crate::admin::add_cors_layer;
-use crate::mtrcs::Recorder;
+use agent_core::metrics::Recorder;
 use crate::sse::AuthError;
 use crate::{a2a, authn, proxyprotocol, rbac, trcng};
 use a2a_sdk::AgentCard;

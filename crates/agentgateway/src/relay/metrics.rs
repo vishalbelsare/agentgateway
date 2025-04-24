@@ -4,7 +4,7 @@ use prometheus_client::metrics::family::Family;
 use prometheus_client::registry::Registry;
 use std::collections::HashMap;
 
-use crate::mtrcs::Recorder;
+use agent_core::metrics::Recorder;
 use crate::rbac;
 
 pub struct Metrics {

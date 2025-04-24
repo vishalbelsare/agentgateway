@@ -1,6 +1,6 @@
 use axum::{Router, extract::State, http::StatusCode, routing::get};
 use std::collections::HashMap;
-use std::{mem, sync::Arc};
+use std::{sync::Arc};
 
 use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry;
@@ -8,78 +8,6 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use crate::admin::add_cors_layer;
-
-/// Creates a metrics sub registry for agentgateway.
-pub fn sub_registry(registry: &mut Registry) -> &mut Registry {
-	registry.sub_registry_with_prefix("agentgateway")
-}
-
-pub struct Deferred<'a, F, T>
-where
-	F: FnOnce(&'a T),
-	T: ?Sized,
-{
-	param: &'a T,
-	deferred_fn: Option<F>,
-}
-
-impl<'a, F, T> Deferred<'a, F, T>
-where
-	F: FnOnce(&'a T),
-	T: ?Sized,
-{
-	pub fn new(param: &'a T, deferred_fn: F) -> Self {
-		Self {
-			param,
-			deferred_fn: Some(deferred_fn),
-		}
-	}
-}
-
-impl<'a, F, T> Drop for Deferred<'a, F, T>
-where
-	F: FnOnce(&'a T),
-	T: ?Sized,
-{
-	fn drop(&mut self) {
-		if let Some(deferred_fn) = mem::take(&mut self.deferred_fn) {
-			(deferred_fn)(self.param);
-		} else {
-			error!("defer deferred record failed, event is gone");
-		}
-	}
-}
-
-pub trait DeferRecorder {
-	#[must_use = "metric will be dropped (and thus recorded) immediately if not assigned"]
-	/// Perform a record operation on this object when the returned [Deferred] object is
-	/// dropped.
-	fn defer_record<'a, F>(&'a self, record: F) -> Deferred<'a, F, Self>
-	where
-		F: FnOnce(&'a Self),
-	{
-		Deferred::new(self, record)
-	}
-}
-
-pub trait Recorder<E, T> {
-	/// Record the given event
-	fn record(&self, event: E, meta: T);
-}
-
-pub trait IncrementRecorder<E>: Recorder<E, u64> {
-	/// Record the given event by incrementing the counter by count
-	fn increment(&self, event: E);
-}
-
-impl<E, R> IncrementRecorder<E> for R
-where
-	R: Recorder<E, u64>,
-{
-	fn increment(&self, event: E) {
-		self.record(event, 1);
-	}
-}
 
 #[derive(Clone, Default)]
 struct App {
