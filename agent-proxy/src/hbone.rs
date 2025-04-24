@@ -161,6 +161,12 @@ impl agent_hbone::pool::CertificateFetcher<WorkloadKey> for LocalWorkloadInforma
 
 pub struct LocalWorkloadInformation {}
 
+impl Default for LocalWorkloadInformation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LocalWorkloadInformation {
 	pub fn new() -> LocalWorkloadInformation {
 		LocalWorkloadInformation {}

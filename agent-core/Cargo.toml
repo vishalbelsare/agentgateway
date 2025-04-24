@@ -7,13 +7,12 @@ rust-version = "1.85"
 [lib]
 path = "src/lib.rs"
 
-
 [dependencies]
-arcstr = { workspace = true, features = ["serde"] }
-bytes = { workspace = true, features = ["serde"] }
+arcstr = { workspace = true }
+bytes = { workspace = true }
 pin-project-lite = { workspace = true }
 prometheus-client = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["full", "macros", "sync"] }
+tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-core = { workspace = true }

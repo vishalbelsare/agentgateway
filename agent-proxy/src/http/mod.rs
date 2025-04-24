@@ -9,7 +9,6 @@ pub type Error = axum_core::Error;
 pub type Body = axum_core::body::Body;
 pub type Request = ::http::Request<Body>;
 pub type Response = ::http::Response<Body>;
-pub use ::http::Extensions;
 pub use ::http::HeaderMap;
 pub use ::http::HeaderName;
 pub use ::http::HeaderValue;

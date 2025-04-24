@@ -43,7 +43,7 @@ impl Transformation {
 mod tests {
 	use crate::http::transformation::Transformation;
 	use http::HeaderName;
-	use std::collections::HashMap;
+	
 
 	fn build<const N: usize>(items: [(&str, &str); N]) -> Transformation {
 		let hm = items

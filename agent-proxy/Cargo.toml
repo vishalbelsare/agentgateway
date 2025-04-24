@@ -19,23 +19,10 @@ agent-hbone  = { workspace = true }
 ring = { workspace = true, optional = true }
 
 anyhow = { workspace = true }
-async-stream = { workspace = true }
 async-trait = { workspace = true }
-base64 = { workspace = true }
-byteorder = { workspace = true }
 bytes = { workspace = true, features = ["serde"] }
-chrono = { workspace = true }
-duration-str = { workspace = true }
-futures = { workspace = true }
 futures-core = { workspace = true }
 futures-util = { workspace = true }
-jemalloc_pprof = { workspace = true, optional = true }
-tikv-jemallocator = { workspace = true, features = ["profiling", "unprefixed_malloc_on_supported_platforms"], optional = true }
-hashbrown = { workspace = true }
-hickory-client = { workspace = true }
-hickory-proto = { workspace = true }
-hickory-resolver = { workspace = true }
-hickory-server = { workspace = true, features = ["hickory-resolver"] }
 http-body = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true, features = ["full"] }
@@ -43,83 +30,38 @@ hyper-rustls = { workspace = true, features = ["logging", "http1", "http2"] }
 hyper-util = { workspace = true, features = ["full"] }
 ipnet = { workspace = true, features = ["serde"] }
 itertools = { workspace = true }
-keyed_priority_queue = { workspace = true }
-libc = { workspace = true }
-log = { workspace = true }
-nix = { workspace = true, features = ["socket", "sched", "uio", "fs", "ioctl", "user", "net", "mount"] }
-once_cell = { workspace = true }
-ppp = { workspace = true }
 prometheus-client = { workspace = true }
-prometheus-parse = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
 rand = { workspace = true, features = ["small_rng"] }
 rcgen = { workspace = true, features = ["pem"], optional = true }
 rustls = { workspace = true, features = ["tls12"] }
-rustls-native-certs = { workspace = true }
 rustls-pemfile = { workspace = true }
 serde = { workspace = true, features = ["derive", "rc"] }
-serde_json = { workspace = true }
-serde_yaml = { workspace = true }
-socket2 = { workspace = true, features = ["all"] }
-textnonce = { workspace = true }
 thiserror = { workspace = true }
-tls-listener = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tokio-rustls = { workspace = true }
 tokio-stream = { workspace = true, features = ["net", "sync"] }
 tonic = { workspace = true, features = ["prost", "codegen", "transport"] }
 tower = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["registry", "env-filter", "json"] }
 url = { workspace = true }
-x509-parser = { workspace = true }
-tracing-log = { workspace = true }
-backoff = { workspace = true }
 pin-project-lite = { workspace = true }
-pingora-pool = { workspace = true }
-flurry = { workspace = true }
-h2 = { workspace = true }
 http = { workspace = true }
-split-iter = { workspace = true }
-arcstr = { workspace = true, features = ["serde"] }
-tracing-core = { workspace = true }
-tracing-appender = { workspace = true }
-tokio-util = { workspace = true, features = ["io-util"] }
-educe = { workspace = true }
-enum_dispatch = { workspace = true }
-enum_delegate = { workspace = true }
-sync_wrapper = { workspace = true }
 axum-core = { workspace = true }
 regex = { workspace = true }
 serde_regex = { workspace = true }
 hex = { workspace = true }
-prost-wkt = { workspace = true }
 minijinja = { workspace = true, features = ["loader"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-netns-rs = "0.1"
-pprof = { version = "0.14", features = ["protobuf", "protobuf-codec", "criterion"] }
 
 [build-dependencies]
 tonic-build = { workspace = true, features = ["prost", "transport"] }
 prost-build = { workspace = true }
 anyhow = { workspace = true }
-rustc_version = { workspace = true }
 
 
 [dev-dependencies]
-# Enable testing utils on this crate.
-
-criterion = { workspace = true, features = ["async_tokio", "html_reports"] }
-diff = { workspace = true }
-local-ip-address = { workspace = true }
-matches = { workspace = true }
-test-case = { workspace = true }
-oid-registry = { workspace = true }
 rcgen = { workspace = true, features = ["pem", "x509-parser"] }
-x509-parser = { workspace = true, features = ["verify"] }
-ctor = { workspace = true }
 
 [lints.clippy]
 # This rule makes code more confusing

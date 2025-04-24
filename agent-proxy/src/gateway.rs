@@ -10,7 +10,6 @@ use crate::types::agent;
 use crate::*;
 use agent_core::drain;
 use agent_core::drain::DrainWatcher;
-use agent_core::prelude::*;
 use anyhow::anyhow;
 use futures_util::FutureExt;
 use hyper::body::Incoming;
@@ -1216,7 +1215,7 @@ impl HTTPProxy {
 	async fn proxy_internal(
 		&self,
 		connection: Arc<Extension>,
-		mut req: ::http::Request<Incoming>,
+		req: ::http::Request<Incoming>,
 	) -> Result<Response, ProxyError> {
 		let tcp = connection.get::<TcpConnectionInfo>().unwrap();
 		let mut log = RequestLog {
@@ -1470,7 +1469,7 @@ fn normalize_uri(connection: &Extension, req: &mut Request) -> anyhow::Result<()
 	Ok(())
 }
 
-fn get_host(mut req: &Request) -> &str {
+fn get_host(req: &Request) -> &str {
 	// HTTP2 will be in URI, HTTP/1.1 will be in header
 	// TODO: handle absolute HTTP/1.1 form
 	let host = req
