@@ -36,20 +36,5 @@
 
 
 # Getting Started 
-**Build**
 
-```bash
-cargo build
-```
-
-**Run**
-
-Local config file
-```bash
-cargo run -- -f examples/basic/config.json
-```
-
-Remote config file
-```bash
-cargo run -- -f https://raw.githubusercontent.com/agentgateway/agentgateway/main/examples/basic/config.json
-```
+To get started with agentgateway, please check out the [Getting Started Guide](https://agentgateway.dev/docs/quickstart ).
