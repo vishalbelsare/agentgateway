@@ -1,0 +1,90 @@
+[package]
+name = "agentgateway"
+version = "0.4.12"
+edition = "2024"
+rust-version = "1.85"
+
+[features]
+default = []
+gcp = ["dep:google-cloud-auth"]
+aws = ["dep:aws-config", "dep:aws-sdk-lambda", "dep:aws-smithy-runtime-api"]
+ui = ["dep:include_dir", "dep:tower-serve-static"]
+
+[dependencies]
+a2a-sdk.workspace = true
+anyhow.workspace = true
+arcstr.workspace = true
+async-stream.workspace = true
+async-trait.workspace = true
+aws-config = { workspace = true, optional = true }
+aws-sdk-lambda = { workspace = true, optional = true }
+aws-smithy-runtime-api = { workspace = true, optional = true }
+axum.workspace = true
+axum-extra.workspace = true
+base64.workspace = true
+bytes.workspace = true
+clap.workspace = true
+eventsource-stream.workspace = true
+futures.workspace = true
+google-cloud-auth = { workspace = true, optional = true }
+headers.workspace = true
+homedir.workspace = true
+http.workspace = true
+include_dir = { workspace = true, optional = true }
+itertools.workspace = true
+jsonwebtoken.workspace = true
+lazy_static.workspace = true
+mime.workspace = true
+once_cell.workspace = true
+openapiv3.workspace = true
+opentelemetry.workspace = true
+opentelemetry-http.workspace = true
+opentelemetry-otlp.workspace = true
+opentelemetry_sdk.workspace = true
+pbjson.workspace = true
+pbjson-types.workspace = true
+ppp.workspace = true
+prometheus-client.workspace = true
+prost.workspace = true
+rand.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+rmcp.workspace = true
+rustls.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+sse-stream.workspace = true
+thiserror.workspace = true
+tls-listener.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
+tokio-stream.workspace = true
+tokio-util.workspace = true
+tonic.workspace = true
+tower-http.workspace = true
+tower-serve-static = { workspace = true, optional = true }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[build-dependencies]
+tonic-build.workspace = true
+prost-build.workspace = true
+anyhow.workspace = true
+rustc_version.workspace = true
+pbjson-build.workspace = true
+
+[lib]
+path = "src/lib.rs"
+bench = false
+
+[[bin]]
+name = "agentgateway"
+path = "src/main.rs"
+bench = false
+
+[dev-dependencies]
+serde_json.workspace = true
+tokio.workspace = true
+wiremock.workspace = true
