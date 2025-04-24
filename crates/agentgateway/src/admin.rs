@@ -439,7 +439,7 @@ mod ui {
 
 	#[cfg(feature = "ui")]
 	lazy_static::lazy_static! {
-		static ref ASSETS_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../ui/out");
+		static ref ASSETS_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../ui/out");
 	}
 
 	#[cfg(feature = "ui")]

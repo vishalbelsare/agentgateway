@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY Makefile Cargo.toml Cargo.lock build.rs ./
+COPY Makefile Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY common ./common
 COPY --from=node /app/out ./ui/out
