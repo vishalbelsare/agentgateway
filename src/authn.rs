@@ -241,7 +241,6 @@ impl JwtAuthenticator {
 		let key = self.key.read().await;
 		let token_data = decode::<Map<String, Value>>(token, &key.key, &validation)
 			.map_err(AuthError::InvalidToken)?;
-		tracing::info!("token data: {:?}", token_data);
 		Ok(crate::rbac::Claims::new(
 			token_data.claims,
 			SecretString::new(token.into()),
