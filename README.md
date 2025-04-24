@@ -11,9 +11,6 @@
     <a href="https://github.com/agentgateway/agentgateway/releases">
       <img src="https://img.shields.io/github/v/release/agentgateway/agentgateway?style=flat&label=Latest%20Release&color=6D28D9" alt="Latest Release">
     </a>
-    <a href="https://github.com/agentgateway/agentgateway/actions/workflows/release.yml">
-      <img src="https://github.com/agentgateway/agentgateway/actions/workflows/release.yml/badge.svg" alt="Release">
-    </a>
   </div>
   <div>
     The first <strong>full featured</strong>, <strong>enterprise-grade</strong> Agent Gateway.
