@@ -23,6 +23,7 @@ extern crate core;
 
 use std::sync::Arc;
 use tracing::info;
+use agent_core::version;
 
 fn main() -> anyhow::Result<()> {
 	let _log_flush = telemetry::setup_logging();
@@ -50,7 +51,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn help() -> anyhow::Result<()> {
-	// let version = version::BuildInfo::new();
+	let version = version::BuildInfo::new();
 	let version = "todo";
 	println!(
 		"
@@ -65,11 +66,12 @@ help            - Print commands and version of ztunnel"
 }
 
 fn version() -> anyhow::Result<()> {
-	todo!()
+	println!("{}", version::BuildInfo::new());
+	Ok(())
 }
 
 async fn proxy(cfg: Arc<Config>) -> anyhow::Result<()> {
-	// info!("version: {}", version::BuildInfo::new());
+	info!("version: {}", version::BuildInfo::new());
 	info!("running with config: {}", serde_yaml::to_string(&cfg)?);
 	app::run(cfg).await
 }
