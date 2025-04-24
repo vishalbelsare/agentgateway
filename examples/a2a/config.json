@@ -9,6 +9,7 @@
   },
   "listeners": [
     {
+      "name": "google-adk",
       "protocol": "A2A",
       "sse": {
         "address": "[::]",
