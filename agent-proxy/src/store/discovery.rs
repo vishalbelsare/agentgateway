@@ -469,7 +469,7 @@ impl Store {
 		Ok(())
 	}
 
-	fn remove(&mut self,  xds_name: &Strng) {
+	fn remove(&mut self, xds_name: &Strng) {
 		self.remove_internal(xds_name, false);
 	}
 

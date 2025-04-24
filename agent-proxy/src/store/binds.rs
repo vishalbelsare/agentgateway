@@ -1,12 +1,19 @@
 use crate::store::Event;
 use crate::types::agent::{Bind, BindName, Listener, ListenerName, ListenerSet, Route, RouteName};
+use crate::types::proto::adp::Resource as ADPResource;
 use crate::*;
+use agent_xds::{RejectedConfig, XdsUpdate};
 use futures_core::Stream;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tracing::Level;
 use tracing::instrument;
+
+use crate::types::proto::adp::Bind as XdsBind;
+use crate::types::proto::adp::Listener as XdsListener;
+use crate::types::proto::adp::Route as XdsRoute;
+use crate::types::proto::adp::resource::Kind as XdsKind;
 
 #[derive(Debug)]
 pub struct Store {
@@ -43,6 +50,7 @@ impl Store {
 	pub fn all(&self) -> Vec<Arc<Bind>> {
 		self.by_name.values().cloned().collect()
 	}
+
 	#[instrument(
         level = Level::INFO,
         name="remove_bind",
@@ -54,6 +62,7 @@ impl Store {
 			let _ = self.tx.send(Event::Remove(old));
 		}
 	}
+
 	#[instrument(
         level = Level::INFO,
         name="remove_listener",
@@ -72,6 +81,7 @@ impl Store {
 		bind.listeners.remove(&listener);
 		self.insert_bind(bind);
 	}
+
 	#[instrument(
         level = Level::INFO,
         name="remove_route",
@@ -141,5 +151,77 @@ impl Store {
 		lis.routes.insert(r.name.clone(), r);
 		bind.listeners.insert(ln, lis);
 		self.insert_bind(bind);
+	}
+
+	fn remove_resource(&mut self, res: &Strng) {
+		trace!("removing res {res}...");
+		let Some((res, res_name)) = res.split_once("/") else {
+			trace!("unknown resource name {res}");
+			return;
+		};
+		match res {
+			"bind" => {
+				self.remove_bind(strng::new(res_name));
+			},
+			"listener" => {
+				self.remove_listener(strng::new(res_name));
+			},
+			"route" => {
+				self.remove_route(strng::new(res_name));
+			},
+			_ => {
+				error!("unknown resource kind {res}");
+			},
+		}
+	}
+
+	fn insert_xds(&mut self, res: ADPResource) -> anyhow::Result<()> {
+		trace!("insert resource {res:?}");
+		match res.kind {
+			Some(XdsKind::Bind(w)) => self.insert_xds_bind(w),
+			Some(XdsKind::Listener(w)) => self.insert_xds_listener(w),
+			Some(XdsKind::Route(w)) => self.insert_xds_route(w),
+			_ => Err(anyhow::anyhow!("unknown resource type")),
+		}
+	}
+
+	fn insert_xds_bind(&mut self, raw: XdsBind) -> anyhow::Result<()> {
+		let bind = Bind::try_from(&raw)?;
+		self.insert_bind(bind);
+		Ok(())
+	}
+	fn insert_xds_listener(&mut self, raw: XdsListener) -> anyhow::Result<()> {
+		let (lis, bind_name): (Listener, BindName) = (&raw).try_into()?;
+		self.insert_listener(lis, bind_name);
+		Ok(())
+	}
+	fn insert_xds_route(&mut self, raw: XdsRoute) -> anyhow::Result<()> {
+		let (route, listener_name): (Route, ListenerName) = (&raw).try_into()?;
+		self.insert_route(route, listener_name);
+		Ok(())
+	}
+}
+
+pub struct StoreUpdater {
+	state: Arc<RwLock<Store>>,
+}
+
+impl agent_xds::Handler<ADPResource> for StoreUpdater {
+	fn handle(
+		&self,
+		updates: Box<&mut dyn Iterator<Item = XdsUpdate<ADPResource>>>,
+	) -> Result<(), Vec<RejectedConfig>> {
+		let mut state = self.state.write().unwrap();
+		let handle = |res: XdsUpdate<ADPResource>| {
+			match res {
+				XdsUpdate::Update(w) => state.insert_xds(w.resource)?,
+				XdsUpdate::Remove(name) => {
+					debug!("handling delete {}", name);
+					state.remove_resource(&strng::new(name))
+				},
+			}
+			Ok(())
+		};
+		agent_xds::handle_single_resource(updates, handle)
 	}
 }

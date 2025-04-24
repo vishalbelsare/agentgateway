@@ -4,6 +4,7 @@ use crate::http::{filters, timeout};
 // use crate::state::workload::{NamespacedHostname, ProtoError};
 use crate::types::discovery::NamespacedHostname;
 use crate::types::proto;
+use crate::types::proto::ProtoError;
 use crate::*;
 use anyhow::anyhow;
 use itertools::Itertools;
@@ -19,7 +20,6 @@ use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU16;
 use std::sync::Arc;
 use thiserror::Error;
-use crate::types::proto::ProtoError;
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

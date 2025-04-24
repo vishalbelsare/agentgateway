@@ -1,5 +1,5 @@
-use std::net;
 use http::{status, uri};
+use std::net;
 use thiserror::Error;
 
 #[allow(warnings)]

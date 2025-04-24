@@ -40,7 +40,7 @@ impl FromStr for NamespacedHostname {
 impl Serialize for NamespacedHostname {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
-	S: Serializer,
+		S: Serializer,
 	{
 		serializer.collect_str(&self)
 	}
@@ -365,11 +365,11 @@ impl Service {
 	}
 	pub fn should_include_endpoint(&self, ep_health: HealthStatus) -> bool {
 		ep_health == HealthStatus::Healthy
-		|| self
-		.load_balancer
-		.as_ref()
-		.map(|lb| lb.health_policy == LoadBalancerHealthPolicy::AllowAll)
-		.unwrap_or(false)
+			|| self
+				.load_balancer
+				.as_ref()
+				.map(|lb| lb.health_policy == LoadBalancerHealthPolicy::AllowAll)
+				.unwrap_or(false)
 	}
 }
 
