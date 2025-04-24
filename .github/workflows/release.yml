@@ -153,7 +153,7 @@ jobs:
         else
           export VERSION=$(echo "$GITHUB_REF" | cut -c12-)
         fi
-        make docker-ext DOCKER_BUILD_ARGS="--push --platform linux/amd64,linux/arm64 --build-arg VERSION=$VERSION"
+        make docker-ext DOCKER_BUILD_ARGS="--push --platform linux/amd64,linux/arm64 --build-arg VERSION=$VERSION --tag ${{ env.REGISTRY_IMAGE }}:latest-ext"
   build:
     runs-on: ${{ matrix.os }}
     strategy:
