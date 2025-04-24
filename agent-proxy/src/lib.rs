@@ -36,7 +36,10 @@ pub fn is_default<T: Default + PartialEq>(t: &T) -> bool {
 	*t == Default::default()
 }
 
-fn serialize_option_display<S: Serializer, T: Display>(t: &Option<T>, serializer: S) -> Result<S::Ok, S::Error> {
+fn serialize_option_display<S: Serializer, T: Display>(
+	t: &Option<T>,
+	serializer: S,
+) -> Result<S::Ok, S::Error> {
 	match t {
 		None => serializer.serialize_none(),
 		Some(t) => serializer.serialize_str(&t.to_string()),
@@ -85,6 +88,11 @@ impl ProxyInputs {
 		metrics: Arc<Metrics>,
 		local_workload_information: Arc<hbone::LocalWorkloadInformation>,
 	) -> Arc<Self> {
-		Arc::new(Self { cfg, store, _metrics: metrics, local_workload_information })
+		Arc::new(Self {
+			cfg,
+			store,
+			_metrics: metrics,
+			local_workload_information,
+		})
 	}
 }

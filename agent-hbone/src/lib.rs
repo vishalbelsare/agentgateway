@@ -44,7 +44,11 @@ pub struct Config {
 	pub pool_unused_release_timeout: Duration,
 }
 
-async fn do_ping_pong(mut ping_pong: h2::PingPong, tx: oneshot::Sender<()>, dropped: Arc<AtomicBool>) {
+async fn do_ping_pong(
+	mut ping_pong: h2::PingPong,
+	tx: oneshot::Sender<()>,
+	dropped: Arc<AtomicBool>,
+) {
 	const PING_INTERVAL: Duration = Duration::from_secs(10);
 	const PING_TIMEOUT: Duration = Duration::from_secs(20);
 	// delay before sending the first ping, no need to race with the first request
@@ -61,12 +65,12 @@ async fn do_ping_pong(mut ping_pong: h2::PingPong, tx: oneshot::Sender<()>, drop
 				trace!("ping timeout");
 				let _ = tx.send(());
 				return;
-			}
+			},
 			Ok(r) => match r {
 				Ok(_) => {
 					trace!("pong received");
 					tokio::time::sleep(PING_INTERVAL).await;
-				}
+				},
 				Err(e) => {
 					if dropped.load(Ordering::Relaxed) {
 						// drive_connection() exits first, no need to error again
@@ -75,7 +79,7 @@ async fn do_ping_pong(mut ping_pong: h2::PingPong, tx: oneshot::Sender<()>, drop
 					error!("ping error: {e}");
 					let _ = tx.send(());
 					return;
-				}
+				},
 			},
 		}
 	}
@@ -107,7 +111,11 @@ impl tokio::io::AsyncRead for RWStream {
 }
 
 impl tokio::io::AsyncWrite for RWStream {
-	fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize, Error>> {
+	fn poll_write(
+		mut self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+		buf: &[u8],
+	) -> Poll<Result<usize, Error>> {
 		use copy::AsyncWriteBuf;
 		Pin::new(&mut self.stream.write).poll_write_buf(cx, Bytes::copy_from_slice(buf))
 	}
@@ -150,8 +158,14 @@ struct DropCounter {
 impl DropCounter {
 	pub fn new(active_count: Arc<AtomicU16>) -> (Option<DropCounter>, Option<DropCounter>) {
 		let half_dropped = Arc::new(());
-		let d1 = DropCounter { half_dropped: half_dropped.clone(), active_count: active_count.clone() };
-		let d2 = DropCounter { half_dropped, active_count };
+		let d1 = DropCounter {
+			half_dropped: half_dropped.clone(),
+			active_count: active_count.clone(),
+		};
+		let d2 = DropCounter {
+			half_dropped,
+			active_count,
+		};
 		(Some(d1), Some(d2))
 	}
 }
@@ -167,7 +181,8 @@ impl copy::BufferedSplitter for H2Stream {
 
 impl H2StreamWriteHalf {
 	fn write_slice(&mut self, buf: Bytes, end_of_stream: bool) -> Result<(), std::io::Error> {
-		self.send_stream
+		self
+			.send_stream
 			.send_data(buf, end_of_stream)
 			.map_err(h2_to_io_error)
 	}
@@ -207,31 +222,44 @@ impl tokio::io::AsyncRead for TokioH2Stream {
 				if buf.remaining() < bytes.len() {
 					Err(Error::new(
 						std::io::ErrorKind::Other,
-						format!("kould overflow buffer of with {} remaining", buf.remaining()),
+						format!(
+							"kould overflow buffer of with {} remaining",
+							buf.remaining()
+						),
 					))
 				} else {
 					buf.put(bytes);
 					Ok(())
 				}
-			}
+			},
 			Err(e) => Err(e),
 		})
 	}
 }
 
 impl tokio::io::AsyncWrite for TokioH2Stream {
-	fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize, tokio::io::Error>> {
+	fn poll_write(
+		mut self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+		buf: &[u8],
+	) -> Poll<Result<usize, tokio::io::Error>> {
 		let pinned = std::pin::Pin::new(&mut self.0.write);
 		let buf = Bytes::copy_from_slice(buf);
 		copy::AsyncWriteBuf::poll_write_buf(pinned, cx, buf)
 	}
 
-	fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+	fn poll_flush(
+		mut self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+	) -> Poll<Result<(), std::io::Error>> {
 		let pinned = std::pin::Pin::new(&mut self.0.write);
 		copy::AsyncWriteBuf::poll_flush(pinned, cx)
 	}
 
-	fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+	fn poll_shutdown(
+		mut self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+	) -> Poll<Result<(), std::io::Error>> {
 		let pinned = std::pin::Pin::new(&mut self.0.write);
 		copy::AsyncWriteBuf::poll_shutdown(pinned, cx)
 	}
@@ -251,16 +279,16 @@ impl copy::ResizeBufRead for H2StreamReadHalf {
 					// this.ping.record_data(buf.len());
 					let _ = this.recv_stream.flow_control().release_capacity(buf.len());
 					return Poll::Ready(Ok(buf));
-				}
+				},
 				Some(Err(e)) => {
 					return Poll::Ready(match e.reason() {
 						Some(Reason::NO_ERROR) | Some(Reason::CANCEL) => {
 							return Poll::Ready(Ok(Bytes::new()));
-						}
+						},
 						Some(Reason::STREAM_CLOSED) => Err(Error::new(std::io::ErrorKind::BrokenPipe, e)),
 						_ => Err(h2_to_io_error(e)),
 					});
-				}
+				},
 			}
 		}
 	}
@@ -271,7 +299,11 @@ impl copy::ResizeBufRead for H2StreamReadHalf {
 }
 
 impl copy::AsyncWriteBuf for H2StreamWriteHalf {
-	fn poll_write_buf(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: Bytes) -> Poll<std::io::Result<usize>> {
+	fn poll_write_buf(
+		mut self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+		buf: Bytes,
+	) -> Poll<std::io::Result<usize>> {
 		if buf.is_empty() {
 			return Poll::Ready(Ok(0));
 		}
@@ -289,36 +321,47 @@ impl copy::AsyncWriteBuf for H2StreamWriteHalf {
 			return Poll::Ready(Ok(cnt));
 		}
 
-		Poll::Ready(Err(h2_to_io_error(match ready!(self.send_stream.poll_reset(cx)) {
-			Ok(Reason::NO_ERROR) | Ok(Reason::CANCEL) | Ok(Reason::STREAM_CLOSED) => {
-				return Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()));
-			}
-			Ok(reason) => reason.into(),
-			Err(e) => e,
-		})))
+		Poll::Ready(Err(h2_to_io_error(
+			match ready!(self.send_stream.poll_reset(cx)) {
+				Ok(Reason::NO_ERROR) | Ok(Reason::CANCEL) | Ok(Reason::STREAM_CLOSED) => {
+					return Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()));
+				},
+				Ok(reason) => reason.into(),
+				Err(e) => e,
+			},
+		)))
 	}
 
 	fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
 		Poll::Ready(Ok(()))
 	}
 
-	fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+	fn poll_shutdown(
+		mut self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+	) -> Poll<Result<(), std::io::Error>> {
 		let r = self.write_slice(Bytes::new(), true);
 		if r.is_ok() {
 			return Poll::Ready(Ok(()));
 		}
 
-		Poll::Ready(Err(h2_to_io_error(match ready!(self.send_stream.poll_reset(cx)) {
-			Ok(Reason::NO_ERROR) => return Poll::Ready(Ok(())),
-			Ok(Reason::CANCEL) | Ok(Reason::STREAM_CLOSED) => {
-				return Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()));
-			}
-			Ok(reason) => reason.into(),
-			Err(e) => e,
-		})))
+		Poll::Ready(Err(h2_to_io_error(
+			match ready!(self.send_stream.poll_reset(cx)) {
+				Ok(Reason::NO_ERROR) => return Poll::Ready(Ok(())),
+				Ok(Reason::CANCEL) | Ok(Reason::STREAM_CLOSED) => {
+					return Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()));
+				},
+				Ok(reason) => reason.into(),
+				Err(e) => e,
+			},
+		)))
 	}
 }
 
 fn h2_to_io_error(e: h2::Error) -> std::io::Error {
-	if e.is_io() { e.into_io().unwrap() } else { std::io::Error::new(std::io::ErrorKind::Other, e) }
+	if e.is_io() {
+		e.into_io().unwrap()
+	} else {
+		std::io::Error::new(std::io::ErrorKind::Other, e)
+	}
 }

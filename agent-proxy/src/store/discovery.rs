@@ -74,7 +74,7 @@ impl ServiceStore {
 					}
 				}
 				None
-			}
+			},
 		}
 	}
 }
@@ -93,10 +93,10 @@ impl WorkloadByAddr {
 		match self {
 			WorkloadByAddr::Single(workload) => {
 				*self = WorkloadByAddr::Many(vec![workload.clone(), w]);
-			}
+			},
 			WorkloadByAddr::Many(v) => {
 				v.push(w);
-			}
+			},
 		}
 	}
 	// remove_uid mutates the address to remove the workload referenced by the UID.
@@ -106,7 +106,7 @@ impl WorkloadByAddr {
 			WorkloadByAddr::Single(wl) => {
 				// Remove it if the UID matches, else do nothing
 				wl.uid == uid
-			}
+			},
 			WorkloadByAddr::Many(ws) => {
 				ws.retain(|w| w.uid != uid);
 				match ws.as_slice() {
@@ -115,11 +115,11 @@ impl WorkloadByAddr {
 						// We now have one workload, transition to Single
 						*self = WorkloadByAddr::Single(wl.clone());
 						false
-					}
+					},
 					// We still have many. We removed already so no need to do anything
 					_ => false,
 				}
-			}
+			},
 		}
 	}
 	pub fn get(&self) -> Arc<Workload> {

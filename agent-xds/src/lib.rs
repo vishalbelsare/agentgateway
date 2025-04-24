@@ -34,7 +34,10 @@ impl fmt::Display for DisplayStatus<'_> {
 		write!(f, "status: {:?}, message: {:?}", s.code(), s.message())?;
 
 		if s.message().to_string().contains("authentication failure") {
-			write!(f, " (hint: check the control plane logs for more information)")?;
+			write!(
+				f,
+				" (hint: check the control plane logs for more information)"
+			)?;
 		}
 		if !s.details().is_empty() {
 			if let Ok(st) = std::str::from_utf8(s.details()) {

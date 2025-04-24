@@ -54,7 +54,10 @@ impl Socket {
 			local_addr: to_canonical(stream.local_addr()?),
 			start: Instant::now(),
 		});
-		Ok(Socket { ext, inner: SocketType::Tcp(stream) })
+		Ok(Socket {
+			ext,
+			inner: SocketType::Tcp(stream),
+		})
 	}
 
 	pub fn from_tls(mut ext: Extension, tls: TlsStream<Box<SocketType>>) -> anyhow::Result<Self> {
@@ -64,14 +67,20 @@ impl Socket {
 			None
 		};
 		ext.insert(TLSConnectionInfo { src_identity });
-		Ok(Socket { ext, inner: SocketType::Tls(tls) })
+		Ok(Socket {
+			ext,
+			inner: SocketType::Tls(tls),
+		})
 	}
 
 	pub fn from_hbone(ext: Arc<Extension>, hbone_address: SocketAddr, hbone: RWStream) -> Self {
 		let mut ext = Extension::wrap(ext);
 		ext.insert(HBONEConnectionInfo { hbone_address });
 
-		Socket { ext, inner: SocketType::Hbone(hbone) }
+		Socket {
+			ext,
+			inner: SocketType::Hbone(hbone),
+		}
 	}
 
 	pub fn get_ext(&self) -> Extension {
@@ -91,7 +100,11 @@ impl Socket {
 	}
 	/// target_address returns the HBONE destination or the L4 destination
 	pub fn target_address(&self) -> SocketAddr {
-		if let Some(hci) = self.ext.get::<HBONEConnectionInfo>() { hci.hbone_address } else { self.tcp().local_addr }
+		if let Some(hci) = self.ext.get::<HBONEConnectionInfo>() {
+			hci.hbone_address
+		} else {
+			self.tcp().local_addr
+		}
 	}
 }
 
@@ -103,7 +116,11 @@ pub enum SocketType {
 }
 
 impl AsyncRead for SocketType {
-	fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+	fn poll_read(
+		self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+		buf: &mut ReadBuf<'_>,
+	) -> Poll<std::io::Result<()>> {
 		match self.get_mut() {
 			SocketType::Tcp(inner) => Pin::new(inner).poll_read(cx, buf),
 			SocketType::Tls(inner) => Pin::new(inner).poll_read(cx, buf),
@@ -113,7 +130,11 @@ impl AsyncRead for SocketType {
 	}
 }
 impl AsyncWrite for SocketType {
-	fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize, std::io::Error>> {
+	fn poll_write(
+		self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+		buf: &[u8],
+	) -> Poll<Result<usize, std::io::Error>> {
 		match self.get_mut() {
 			SocketType::Tcp(inner) => Pin::new(inner).poll_write(cx, buf),
 			SocketType::Tls(inner) => Pin::new(inner).poll_write(cx, buf),
@@ -164,12 +185,20 @@ impl AsyncWrite for SocketType {
 }
 
 impl AsyncRead for Socket {
-	fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+	fn poll_read(
+		mut self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+		buf: &mut ReadBuf<'_>,
+	) -> Poll<std::io::Result<()>> {
 		Pin::new(&mut self.inner).poll_read(cx, buf)
 	}
 }
 impl AsyncWrite for Socket {
-	fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize, Error>> {
+	fn poll_write(
+		mut self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+		buf: &[u8],
+	) -> Poll<Result<usize, Error>> {
 		Pin::new(&mut self.inner).poll_write(cx, buf)
 	}
 
@@ -229,7 +258,7 @@ impl Extension {
 				} else {
 					inner.get::<T>()
 				}
-			}
+			},
 		}
 	}
 }

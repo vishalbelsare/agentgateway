@@ -38,8 +38,12 @@ pub fn new() -> (DrainTrigger, DrainWatcher) {
 /// * force_shutdown: when this is triggered, the future must forcefully shutdown any ongoing work ASAP.
 ///   This means the graceful drain exceeded the hard deadline, and all work must terminate now.
 ///   This is only required for spawned() tasks; otherwise, the future is dropped entirely, canceling all work.
-pub async fn run_with_drain<F, O>(component: String, drain: DrainWatcher, deadline: Duration, make_future: F)
-where
+pub async fn run_with_drain<F, O>(
+	component: String,
+	drain: DrainWatcher,
+	deadline: Duration,
+	make_future: F,
+) where
 	F: AsyncFnOnce(DrainWatcher, watch::Receiver<()>) -> O,
 	O: Send + 'static,
 {
@@ -82,8 +86,14 @@ mod internal {
 		let (signal_tx, signal_rx) = watch::channel(None);
 		let (drained_tx, drained_rx) = mpsc::channel(1);
 
-		let signal = Signal { drained_rx, signal_tx };
-		let watch = Watch { drained_tx, signal_rx };
+		let signal = Signal {
+			drained_rx,
+			signal_tx,
+		};
+		let watch = Watch {
+			drained_tx,
+			signal_rx,
+		};
 		(signal, watch)
 	}
 
@@ -137,7 +147,7 @@ mod internal {
 
 			// Wait for all watchers to release their drain handle.
 			match self.drained_rx.recv().await {
-				None => {}
+				None => {},
 				Some(n) => match n {},
 			}
 		}

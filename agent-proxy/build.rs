@@ -15,10 +15,14 @@
 // This build script is used to generate the rust source files that
 // we need for XDS GRPC communication.
 fn main() -> Result<(), anyhow::Error> {
-	let proto_files = ["proto/ext_proc.proto", "proto/adp.proto", "proto/workload.proto"]
-		.iter()
-		.map(|name| std::env::current_dir().unwrap().join(name))
-		.collect::<Vec<_>>();
+	let proto_files = [
+		"proto/ext_proc.proto",
+		"proto/adp.proto",
+		"proto/workload.proto",
+	]
+	.iter()
+	.map(|name| std::env::current_dir().unwrap().join(name))
+	.collect::<Vec<_>>();
 	let include_dirs = ["proto/"]
 		.iter()
 		.map(|i| std::env::current_dir().unwrap().join(i))

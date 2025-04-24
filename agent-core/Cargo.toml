@@ -9,11 +9,11 @@ path = "src/lib.rs"
 
 
 [dependencies]
-arcstr = { version = "1.2", features = ["serde"] }
-bytes = { version = "1.10.1", features = ["serde"] }
-pin-project-lite = "0.2.16"
-prometheus-client = { version = "0.23" }
-thiserror = "2.0.12"
-tokio = { version = "1.44.2", features = ["full", "macros", "sync"] }
-tracing = { version = "0.1"}
-tracing-core = "0.1"
+arcstr = { workspace = true, features = ["serde"] }
+bytes = { workspace = true, features = ["serde"] }
+pin-project-lite = { workspace = true }
+prometheus-client = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full", "macros", "sync"] }
+tracing = { workspace = true }
+tracing-core = { workspace = true }

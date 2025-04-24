@@ -43,7 +43,10 @@ where
 	T: ?Sized,
 {
 	pub fn new(param: &'a T, deferred_fn: F) -> Self {
-		Self { param, deferred_fn: Some(deferred_fn) }
+		Self {
+			param,
+			deferred_fn: Some(deferred_fn),
+		}
 	}
 }
 
@@ -124,25 +127,41 @@ impl<T> Default for DefaultedUnknown<T> {
 
 impl From<String> for DefaultedUnknown<String> {
 	fn from(t: String) -> Self {
-		if t.is_empty() { DefaultedUnknown(None) } else { DefaultedUnknown(Some(t)) }
+		if t.is_empty() {
+			DefaultedUnknown(None)
+		} else {
+			DefaultedUnknown(Some(t))
+		}
 	}
 }
 
 impl From<RichStrng> for DefaultedUnknown<RichStrng> {
 	fn from(t: RichStrng) -> Self {
-		if t.is_empty() { DefaultedUnknown(None) } else { DefaultedUnknown(Some(t)) }
+		if t.is_empty() {
+			DefaultedUnknown(None)
+		} else {
+			DefaultedUnknown(Some(t))
+		}
 	}
 }
 
 impl From<String> for DefaultedUnknown<RichStrng> {
 	fn from(t: String) -> Self {
-		if t.is_empty() { DefaultedUnknown(None) } else { DefaultedUnknown(Some(t.into())) }
+		if t.is_empty() {
+			DefaultedUnknown(None)
+		} else {
+			DefaultedUnknown(Some(t.into()))
+		}
 	}
 }
 
 impl From<Strng> for DefaultedUnknown<RichStrng> {
 	fn from(t: Strng) -> Self {
-		if t.is_empty() { DefaultedUnknown(None) } else { DefaultedUnknown(Some(t.into())) }
+		if t.is_empty() {
+			DefaultedUnknown(None)
+		} else {
+			DefaultedUnknown(Some(t.into()))
+		}
 	}
 }
 

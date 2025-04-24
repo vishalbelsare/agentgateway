@@ -19,10 +19,16 @@ pub struct HeaderModifier {
 impl HeaderModifier {
 	pub fn apply(&self, headers: &mut HeaderMap<HeaderValue>) {
 		for (k, v) in &self.add {
-			headers.append(HeaderName::from_bytes(k.as_bytes()).unwrap(), v.parse().unwrap());
+			headers.append(
+				HeaderName::from_bytes(k.as_bytes()).unwrap(),
+				v.parse().unwrap(),
+			);
 		}
 		for (k, v) in &self.set {
-			headers.insert(HeaderName::from_bytes(k.as_bytes()).unwrap(), v.parse().unwrap());
+			headers.insert(
+				HeaderName::from_bytes(k.as_bytes()).unwrap(),
+				v.parse().unwrap(),
+			);
 		}
 		for k in &self.remove {
 			headers.remove(HeaderName::from_bytes(k.as_bytes()).unwrap());
@@ -33,19 +39,32 @@ impl HeaderModifier {
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RequestRedirect {
-	#[serde(default, skip_serializing_if = "is_default", serialize_with = "serialize_option_display")]
+	#[serde(
+		default,
+		skip_serializing_if = "is_default",
+		serialize_with = "serialize_option_display"
+	)]
 	pub scheme: Option<http::uri::Scheme>,
 	#[serde(default, skip_serializing_if = "is_default")]
 	pub authority: Option<HostRedirect>,
 	#[serde(default, skip_serializing_if = "is_default")]
 	pub path: Option<PathRedirect>,
-	#[serde(default, skip_serializing_if = "is_default", serialize_with = "serialize_option_display")]
+	#[serde(
+		default,
+		skip_serializing_if = "is_default",
+		serialize_with = "serialize_option_display"
+	)]
 	pub status: Option<http::StatusCode>,
 }
 
 impl RequestRedirect {
 	pub fn apply(&self, req: &mut Request, path_match: &PathMatch) -> Option<Response> {
-		let RequestRedirect { scheme, authority, path, status } = self;
+		let RequestRedirect {
+			scheme,
+			authority,
+			path,
+			status,
+		} = self;
 		let new_scheme = scheme
 			.as_ref()
 			.or_else(|| req.uri().scheme())
@@ -87,8 +106,10 @@ impl UrlRewrite {
 
 		let new_authority = rewrite_host(authority, req.uri(), Some(&scheme), &scheme).expect("TODO");
 		if authority.is_some() {
-			req.headers_mut()
-				.insert(http::header::HOST, HeaderValue::from_bytes(new_authority.as_str().as_bytes()).expect("TODO"));
+			req.headers_mut().insert(
+				http::header::HOST,
+				HeaderValue::from_bytes(new_authority.as_str().as_bytes()).expect("TODO"),
+			);
 		}
 		let path_and_query = rewrite_path(path, path_match, req.uri()).expect("TODO");
 		let new = Uri::builder()
@@ -135,20 +156,22 @@ fn rewrite_host(
 					None => Ok(h.as_str().try_into()?),
 				}
 			}
-		}
+		},
 		Some(HostRedirect::Port(p)) => {
 			match port_respecting_default(new_scheme, p.get()) {
 				// We need to set port here
 				Some(p) if Some(p) != orig.port_u16() => {
 					let h = orig.host().ok_or(anyhow::anyhow!("no authority"))?;
 					Ok(format!("{}:{}", h, p).try_into()?)
-				}
+				},
 
 				// Strip the port
-				None if orig.port().is_some() => Ok(orig
-					.host()
-					.ok_or(anyhow::anyhow!("no authority"))?
-					.parse()?),
+				None if orig.port().is_some() => Ok(
+					orig
+						.host()
+						.ok_or(anyhow::anyhow!("no authority"))?
+						.parse()?,
+				),
 
 				// Keep it as-is
 				_ => orig
@@ -156,7 +179,7 @@ fn rewrite_host(
 					.ok_or(anyhow::anyhow!("no authority"))
 					.cloned(),
 			}
-		}
+		},
 	}
 }
 
@@ -177,13 +200,17 @@ fn rewrite_path(
 ) -> anyhow::Result<http::uri::PathAndQuery> {
 	// TODO: we need to consider the selected match
 	match rewrite {
-		None => Ok(orig
-			.path_and_query()
-			.ok_or(anyhow!("should have a path"))
-			.cloned()?),
+		None => Ok(
+			orig
+				.path_and_query()
+				.ok_or(anyhow!("should have a path"))
+				.cloned()?,
+		),
 		Some(PathRedirect::Full(r)) => Ok(r.as_str().try_into()?),
 		Some(PathRedirect::Prefix(r)) => {
-			let PathMatch::PathPrefix(match_pfx) = path_match else { anyhow::bail!("invalid prefix rewrite") };
+			let PathMatch::PathPrefix(match_pfx) = path_match else {
+				anyhow::bail!("invalid prefix rewrite")
+			};
 			let mut new_path = r.to_string();
 			let (_, rest) = orig.path().split_at(match_pfx.len());
 			if !rest.is_empty() && !rest.starts_with('/') {
@@ -195,6 +222,6 @@ fn rewrite_path(
 				new_path.push_str(q);
 			}
 			Ok(new_path.try_into()?)
-		}
+		},
 	}
 }

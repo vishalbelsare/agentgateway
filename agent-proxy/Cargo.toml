@@ -12,114 +12,114 @@ default = ["tls-ring"]
 tls-ring = ["dep:ring", "rustls/ring", "tokio-rustls/ring", "hyper-rustls/ring", "dep:rcgen"]
 
 [dependencies]
-agent-core  = { path = "../agent-core"}
-agent-hbone  = { path = "../agent-hbone"}
+agent-core  = { workspace = true }
+agent-hbone  = { workspace = true }
 
 # Enabled with 'tls-ring'
-ring = { version = "0.17", optional = true }
+ring = { workspace = true, optional = true }
 
-anyhow = "1.0"
-async-stream = "0.3"
-async-trait = "0.1"
-base64 = "0.22"
-byteorder = "1.5"
-bytes = { version = "1.9", features = ["serde"] }
-chrono = "0.4"
-duration-str = "0.13"
-futures = "0.3"
-futures-core = "0.3"
-futures-util = "0.3"
-jemalloc_pprof = { version = "0.6.0", optional = true }
-tikv-jemallocator = { version = "0.6.0", features = ["profiling", "unprefixed_malloc_on_supported_platforms"], optional = true }
-hashbrown = "0.15"
-hickory-client = "0.24"
-hickory-proto = "0.24"
-hickory-resolver = "0.24"
-hickory-server = { version = "0.24", features = [ "hickory-resolver" ] }
-http-body = { package = "http-body", version = "1" }
-http-body-util = "0.1"
-hyper = { version = "1.5", features = ["full"] }
-hyper-rustls = { version = "0.27.0", default-features = false, features = ["logging", "http1", "http2"] }
-hyper-util = { version = "0.1", features = ["full"] }
-ipnet = { version = "2.9", features = ["serde"] }
-itertools = "0.13"
-keyed_priority_queue = "0.4"
-libc = "0.2"
-log = "0.4"
-nix = { version = "0.29", features = ["socket", "sched", "uio", "fs", "ioctl", "user", "net", "mount"] }
-once_cell = "1.19"
-ppp = "2.2"
-prometheus-client = { version = "0.23" }
-prometheus-parse = "0.2"
-prost = "0.13"
-prost-types = "0.13"
-rand = { version = "0.9" , features = ["small_rng"]}
-rcgen = { version = "0.13", optional = true, features = ["pem"] }
-rustls = { version = "0.23", default-features = false, features = ["tls12"] }
-rustls-native-certs = "0.8"
-rustls-pemfile = "2.2"
-serde = { version = "1.0", features = ["derive", "rc"] }
-serde_json = "1.0"
-serde_yaml = "0.9"
-socket2 = { version = "0.5", features = ["all"] }
-textnonce = { version = "1.0" }
-thiserror = "2.0"
-tls-listener = { version = "0.11" }
-tokio = { version = "1.42", features = ["full", "test-util"] }
-tokio-rustls = { version = "0.26", default-features = false }
-tokio-stream = { version = "0.1", features = ["net", "sync"] }
-tonic = { version = "0.12", default-features = false, features = ["prost", "codegen", "transport"] }
-tower = { version = "0.5", features = ["full"] }
-tracing = { version = "0.1"}
-tracing-subscriber = { version = "0.3", features = ["registry", "env-filter", "json"] }
-url = "2.5"
-x509-parser = { version = "0.17", default-features = false }
-tracing-log = "0.2"
-backoff = "0.4"
-pin-project-lite = "0.2"
-pingora-pool = "0.4"
-flurry = "0.5"
-h2 = "0.4"
-http = "1.2"
-split-iter = "0.1"
-arcstr = { version = "1.2", features = ["serde"] }
-tracing-core = "0.1"
-tracing-appender = "0.2"
-tokio-util = { version = "0.7", features = ["io-util"] }
-educe = "0.6.0"
-enum_dispatch = "0.3.13"
-enum_delegate = "0.2.0"
-sync_wrapper = "1.0.2"
-axum-core = "0.5.2"
-regex = "1.11.1"
-serde_regex = "1.1.0"
-hex = "0.4.3"
-prost-wkt = "0.6.0"
-minijinja = { version = "2.9.0", features = ["loader"] }
+anyhow = { workspace = true }
+async-stream = { workspace = true }
+async-trait = { workspace = true }
+base64 = { workspace = true }
+byteorder = { workspace = true }
+bytes = { workspace = true, features = ["serde"] }
+chrono = { workspace = true }
+duration-str = { workspace = true }
+futures = { workspace = true }
+futures-core = { workspace = true }
+futures-util = { workspace = true }
+jemalloc_pprof = { workspace = true, optional = true }
+tikv-jemallocator = { workspace = true, features = ["profiling", "unprefixed_malloc_on_supported_platforms"], optional = true }
+hashbrown = { workspace = true }
+hickory-client = { workspace = true }
+hickory-proto = { workspace = true }
+hickory-resolver = { workspace = true }
+hickory-server = { workspace = true, features = ["hickory-resolver"] }
+http-body = { workspace = true }
+http-body-util = { workspace = true }
+hyper = { workspace = true, features = ["full"] }
+hyper-rustls = { workspace = true, features = ["logging", "http1", "http2"] }
+hyper-util = { workspace = true, features = ["full"] }
+ipnet = { workspace = true, features = ["serde"] }
+itertools = { workspace = true }
+keyed_priority_queue = { workspace = true }
+libc = { workspace = true }
+log = { workspace = true }
+nix = { workspace = true, features = ["socket", "sched", "uio", "fs", "ioctl", "user", "net", "mount"] }
+once_cell = { workspace = true }
+ppp = { workspace = true }
+prometheus-client = { workspace = true }
+prometheus-parse = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+rand = { workspace = true, features = ["small_rng"] }
+rcgen = { workspace = true, features = ["pem"], optional = true }
+rustls = { workspace = true, features = ["tls12"] }
+rustls-native-certs = { workspace = true }
+rustls-pemfile = { workspace = true }
+serde = { workspace = true, features = ["derive", "rc"] }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+socket2 = { workspace = true, features = ["all"] }
+textnonce = { workspace = true }
+thiserror = { workspace = true }
+tls-listener = { workspace = true }
+tokio = { workspace = true, features = ["full", "test-util"] }
+tokio-rustls = { workspace = true }
+tokio-stream = { workspace = true, features = ["net", "sync"] }
+tonic = { workspace = true, features = ["prost", "codegen", "transport"] }
+tower = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["registry", "env-filter", "json"] }
+url = { workspace = true }
+x509-parser = { workspace = true }
+tracing-log = { workspace = true }
+backoff = { workspace = true }
+pin-project-lite = { workspace = true }
+pingora-pool = { workspace = true }
+flurry = { workspace = true }
+h2 = { workspace = true }
+http = { workspace = true }
+split-iter = { workspace = true }
+arcstr = { workspace = true, features = ["serde"] }
+tracing-core = { workspace = true }
+tracing-appender = { workspace = true }
+tokio-util = { workspace = true, features = ["io-util"] }
+educe = { workspace = true }
+enum_dispatch = { workspace = true }
+enum_delegate = { workspace = true }
+sync_wrapper = { workspace = true }
+axum-core = { workspace = true }
+regex = { workspace = true }
+serde_regex = { workspace = true }
+hex = { workspace = true }
+prost-wkt = { workspace = true }
+minijinja = { workspace = true, features = ["loader"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 netns-rs = "0.1"
 pprof = { version = "0.14", features = ["protobuf", "protobuf-codec", "criterion"] }
 
 [build-dependencies]
-tonic-build = { version = "0.12", default-features = false, features = ["prost", "transport"] }
-prost-build = "0.13"
-anyhow = "1.0"
-rustc_version = "0.4"
+tonic-build = { workspace = true, features = ["prost", "transport"] }
+prost-build = { workspace = true }
+anyhow = { workspace = true }
+rustc_version = { workspace = true }
 
 
 [dev-dependencies]
 # Enable testing utils on this crate.
 
-criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
-diff = "0.1"
-local-ip-address = "0.6"
-matches = "0.1"
-test-case = "3.3"
-oid-registry = "0.8"
-rcgen = { version = "0.13", features = ["pem", "x509-parser"] }
-x509-parser = { version = "0.17", default-features = false, features = ["verify"] }
-ctor = "0.3"
+criterion = { workspace = true, features = ["async_tokio", "html_reports"] }
+diff = { workspace = true }
+local-ip-address = { workspace = true }
+matches = { workspace = true }
+test-case = { workspace = true }
+oid-registry = { workspace = true }
+rcgen = { workspace = true, features = ["pem", "x509-parser"] }
+x509-parser = { workspace = true, features = ["verify"] }
+ctor = { workspace = true }
 
 [lints.clippy]
 # This rule makes code more confusing

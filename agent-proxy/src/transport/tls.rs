@@ -4,7 +4,8 @@ use rustls::ServerConfig;
 use rustls::crypto::CryptoProvider;
 use std::sync::Arc;
 
-pub static ALL_TLS_VERSIONS: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS12, &rustls::version::TLS13];
+pub static ALL_TLS_VERSIONS: &[&rustls::SupportedProtocolVersion] =
+	&[&rustls::version::TLS12, &rustls::version::TLS13];
 
 pub fn provider() -> Arc<CryptoProvider> {
 	Arc::new(CryptoProvider {

@@ -37,13 +37,20 @@ pub struct H2ConnectClient<K> {
 
 impl<K: Key> H2ConnectClient<K> {
 	pub fn is_for_workload(&self, wl_key: &K) -> anyhow::Result<()> {
-		if !(self.wl_key == *wl_key) { Err(anyhow::anyhow!("connection does not match workload key!")) } else { Ok(()) }
+		if !(self.wl_key == *wl_key) {
+			Err(anyhow::anyhow!("connection does not match workload key!"))
+		} else {
+			Ok(())
+		}
 	}
 
 	// will_be_at_max_streamcount checks if a stream will be maxed out if we send one more request on it
 	pub fn will_be_at_max_streamcount(&self) -> bool {
 		let future_count = self.stream_count.load(Ordering::Relaxed) + 1;
-		trace!("checking streamcount: {future_count} >= {}", self.max_allowed_streams);
+		trace!(
+			"checking streamcount: {future_count} >= {}",
+			self.max_allowed_streams
+		);
 		future_count >= self.max_allowed_streams
 	}
 
@@ -58,7 +65,7 @@ impl<K: Key> H2ConnectClient<K> {
 				// If it is, though, err on the safe side and do not use the connection
 				warn!("checked out connection is Pending, skipping");
 				false
-			}
+			},
 		}
 	}
 
@@ -71,18 +78,27 @@ impl<K: Key> H2ConnectClient<K> {
 				// Request failed, so drop the stream now
 				self.stream_count.fetch_sub(1, Ordering::SeqCst);
 				return Err(e);
-			}
+			},
 		};
 
 		let (dropped1, dropped2) = crate::DropCounter::new(self.stream_count.clone());
-		let read = crate::H2StreamReadHalf { recv_stream: recv, _dropped: dropped1 };
-		let write = crate::H2StreamWriteHalf { send_stream: send, _dropped: dropped2 };
+		let read = crate::H2StreamReadHalf {
+			recv_stream: recv,
+			_dropped: dropped1,
+		};
+		let write = crate::H2StreamWriteHalf {
+			send_stream: send,
+			_dropped: dropped2,
+		};
 		let h2 = crate::H2Stream { read, write };
 		Ok(h2)
 	}
 
 	// helper to allow us to handle errors once
-	async fn internal_send(&mut self, req: Request<()>) -> anyhow::Result<(SendStream<Bytes>, h2::RecvStream)> {
+	async fn internal_send(
+		&mut self,
+		req: Request<()>,
+	) -> anyhow::Result<(SendStream<Bytes>, h2::RecvStream)> {
 		// "This function must return `Ready` before `send_request` is called"
 		// We should always be ready though, because we make sure we don't go over the max stream limit out of band.
 		futures::future::poll_fn(|cx| self.sender.poll_ready(cx)).await?;
@@ -156,7 +172,9 @@ where
 	let (ping_drop_tx, ping_drop_rx) = oneshot::channel::<()>();
 	// for this fn to inform ping to give up when it is already dropped
 	let dropped = Arc::new(AtomicBool::new(false));
-	tokio::task::spawn(super::do_ping_pong(ping_pong, ping_drop_tx, dropped.clone()).in_current_span());
+	tokio::task::spawn(
+		super::do_ping_pong(ping_pong, ping_drop_tx, dropped.clone()).in_current_span(),
+	);
 
 	tokio::select! {
 		_ = driver_drain.changed() => {

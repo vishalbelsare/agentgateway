@@ -16,7 +16,10 @@ fn build(request_headers: HashMap<HeaderName, String>) -> anyhow::Result<Transfo
 		// }
 		res.insert(k, name);
 	}
-	Ok(Transformation { env, request_headers: res })
+	Ok(Transformation {
+		env,
+		request_headers: res,
+	})
 }
 
 impl Transformation {
@@ -29,7 +32,8 @@ impl Transformation {
 			let res = tmpl.render(());
 			req.headers_mut().insert(
 				name,
-				HeaderValue::try_from(res.unwrap_or_else(|_| "template render failed".to_string())).unwrap(),
+				HeaderValue::try_from(res.unwrap_or_else(|_| "template render failed".to_string()))
+					.unwrap(),
 			);
 		}
 	}
@@ -38,16 +42,17 @@ impl Transformation {
 #[cfg(test)]
 mod tests {
 	use crate::http::transformation::Transformation;
-	use std::collections::HashMap;
 	use http::HeaderName;
+	use std::collections::HashMap;
 
 	fn build<const N: usize>(items: [(&str, &str); N]) -> Transformation {
-		let hm = items.iter().map(|(k, v)| {
-			(HeaderName::try_from(*k).unwrap(), v.to_string())
-		}).collect();
+		let hm = items
+			.iter()
+			.map(|(k, v)| (HeaderName::try_from(*k).unwrap(), v.to_string()))
+			.collect();
 		super::build(hm).unwrap()
 	}
-	
+
 	#[test]
 	fn test_transformation() {
 		let mut req = ::http::Request::builder()

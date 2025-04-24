@@ -281,7 +281,10 @@ impl ListenerSet {
 			.sorted_by_key(|l| -(l.hostname.len() as i64))
 			.find(|l| l.hostname.starts_with("*") && host.ends_with(&l.hostname.as_str()[1..]))
 		{
-			tracing::debug!("howardjohn: found best match for {host} (wildcard {})", best.hostname);
+			tracing::debug!(
+				"howardjohn: found best match for {host} (wildcard {})",
+				best.hostname
+			);
 			return Some(best.clone());
 		}
 		tracing::debug!("howardjohn: trying to find best match for {host} (empty hostname)");
@@ -358,7 +361,11 @@ impl RouteSet {
 }
 
 fn default_as_none<T: Default + PartialEq>(i: T) -> Option<T> {
-	if i == Default::default() { None } else { Some(i) }
+	if i == Default::default() {
+		None
+	} else {
+		Some(i)
+	}
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy, serde::Serialize)]
@@ -390,9 +397,14 @@ pub enum Event<T> {
 impl BindStore {
 	pub fn new() -> Self {
 		let (tx, _) = tokio::sync::broadcast::channel(10);
-		Self { by_name: Default::default(), tx }
+		Self {
+			by_name: Default::default(),
+			tx,
+		}
 	}
-	pub fn subscribe(&self) -> (impl Stream<Item = Result<Event<Arc<Bind>>, BroadcastStreamRecvError>> + use<>) {
+	pub fn subscribe(
+		&self,
+	) -> (impl Stream<Item = Result<Event<Arc<Bind>>, BroadcastStreamRecvError>> + use<>) {
 		let sub = self.tx.subscribe();
 		tokio_stream::wrappers::BroadcastStream::new(sub)
 	}
@@ -554,7 +566,9 @@ impl TryFrom<&proto::adp::TlsConfig> for TLSConfig {
 			.with_single_cert(cert_chain, private_key)?;
 		// TODO: support h2
 		sc.alpn_protocols = vec![b"http/1.1".into()];
-		Ok(TLSConfig { config: Arc::new(sc) })
+		Ok(TLSConfig {
+			config: Arc::new(sc),
+		})
 	}
 }
 
@@ -566,20 +580,26 @@ impl TryFrom<&proto::adp::RouteBackend> for RouteBackend {
 			None => Backend::Invalid,
 			Some(proto::adp::route_backend::Kind::Service(svc_key)) => {
 				let ns = match svc_key.split_once('/') {
-					Some((namespace, hostname)) => {
-						Ok(NamespacedHostname { namespace: namespace.into(), hostname: hostname.into() })
-					}
+					Some((namespace, hostname)) => Ok(NamespacedHostname {
+						namespace: namespace.into(),
+						hostname: hostname.into(),
+					}),
 					None => Err(ProtoError::NamespacedHostnameParse(svc_key.clone())),
 				}?;
 				Backend::Service(ns)
-			}
+			},
 		};
 		let filters = s
 			.filters
 			.iter()
 			.map(RouteFilter::try_from)
 			.collect::<Result<Vec<_>, _>>()?;
-		Ok(Self { weight: s.weight as usize, port: s.port as u16, backend: kind, filters })
+		Ok(Self {
+			weight: s.weight as usize,
+			port: s.port as u16,
+			backend: kind,
+			filters,
+		})
 	}
 }
 
@@ -593,23 +613,32 @@ impl TryFrom<proto::adp::TrafficPolicy> for TrafficPolicy {
 			.map(|v| v.try_into())
 			.transpose()?;
 
-		Ok(Self { timeout: http::timeout::Policy { request_timeout: req, backend_request_timeout: backend } })
+		Ok(Self {
+			timeout: http::timeout::Policy {
+				request_timeout: req,
+				backend_request_timeout: backend,
+			},
+		})
 	}
 }
 
 impl TryFrom<(proto::adp::Protocol, Option<&proto::adp::TlsConfig>)> for ListenerProtocol {
 	type Error = ProtoError;
-	fn try_from(value: (proto::adp::Protocol, Option<&proto::adp::TlsConfig>)) -> Result<Self, Self::Error> {
+	fn try_from(
+		value: (proto::adp::Protocol, Option<&proto::adp::TlsConfig>),
+	) -> Result<Self, Self::Error> {
 		use proto::adp::Protocol;
 		match (value.0, value.1) {
 			(Protocol::Unknown, _) => Err(ProtoError::EnumParse("unknown protocol".into())),
 			(Protocol::Http, None) => Ok(ListenerProtocol::HTTP),
 			(Protocol::Https, Some(tls)) => Ok(ListenerProtocol::HTTPS(
-				tls.try_into()
+				tls
+					.try_into()
 					.map_err(|e| ProtoError::Generic(format!("{e}")))?,
 			)),
 			(Protocol::Tls, Some(tls)) => Ok(ListenerProtocol::TLS(
-				tls.try_into()
+				tls
+					.try_into()
 					.map_err(|e| ProtoError::Generic(format!("{e}")))?,
 			)),
 			(Protocol::Tcp, None) => Ok(ListenerProtocol::TCP),
@@ -617,7 +646,11 @@ impl TryFrom<(proto::adp::Protocol, Option<&proto::adp::TlsConfig>)> for Listene
 			(proto, tls) => Err(ProtoError::Generic(format!(
 				"protocol {:?} is incompatible with {}",
 				proto,
-				if tls.is_some() { "tls" } else { "no tls config" }
+				if tls.is_some() {
+					"tls"
+				} else {
+					"no tls config"
+				}
 			))),
 		}
 	}
@@ -640,8 +673,8 @@ impl TryFrom<&proto::adp::Listener> for (Listener, BindName) {
 
 	fn try_from(s: &proto::adp::Listener) -> Result<Self, Self::Error> {
 		let proto = proto::adp::Protocol::try_from(s.protocol)?;
-		let protocol =
-			ListenerProtocol::try_from((proto, s.tls.as_ref())).map_err(|e| ProtoError::Generic(format!("{e}")))?;
+		let protocol = ListenerProtocol::try_from((proto, s.tls.as_ref()))
+			.map_err(|e| ProtoError::Generic(format!("{e}")))?;
 		let l = Listener {
 			name: strng::new(&s.name),
 			hostname: s.hostname.clone().into(),
@@ -691,26 +724,29 @@ impl TryFrom<&proto::adp::RouteMatch> for RouteMatch {
 		use proto::adp::path_match::*;
 		let path = match &s.path {
 			None => PathMatch::PathPrefix(strng::new("/")),
-			Some(proto::adp::PathMatch { kind: Some(Kind::PathPrefix(prefix)) }) => {
-				PathMatch::PathPrefix(strng::new(prefix))
-			}
-			Some(proto::adp::PathMatch { kind: Some(Kind::Exact(prefix)) }) => PathMatch::Exact(strng::new(prefix)),
-			Some(proto::adp::PathMatch { kind: Some(Kind::Regex(r)) }) => {
-				PathMatch::Regex(regex::Regex::new(r)?, r.len())
-			}
+			Some(proto::adp::PathMatch {
+				kind: Some(Kind::PathPrefix(prefix)),
+			}) => PathMatch::PathPrefix(strng::new(prefix)),
+			Some(proto::adp::PathMatch {
+				kind: Some(Kind::Exact(prefix)),
+			}) => PathMatch::Exact(strng::new(prefix)),
+			Some(proto::adp::PathMatch {
+				kind: Some(Kind::Regex(r)),
+			}) => PathMatch::Regex(regex::Regex::new(r)?, r.len()),
 			Some(proto::adp::PathMatch { kind: None }) => {
 				return Err(ProtoError::Generic("invalid path match".to_string()));
-			}
+			},
 		};
-		let method = s
-			.method
-			.as_ref()
-			.map(|m| MethodMatch { method: strng::new(&m.exact) });
+		let method = s.method.as_ref().map(|m| MethodMatch {
+			method: strng::new(&m.exact),
+		});
 		let headers = s
 			.headers
 			.iter()
 			.map(|h| match &h.value {
-				None => Err(ProtoError::Generic("invalid header match value".to_string())),
+				None => Err(ProtoError::Generic(
+					"invalid header match value".to_string(),
+				)),
 				Some(proto::adp::header_match::Value::Exact(e)) => Ok(HeaderMatch {
 					name: http::HeaderName::from_bytes(h.name.as_bytes())?,
 					value: HeaderValueMatch::Exact(http::HeaderValue::from_bytes(e.as_bytes())?),
@@ -726,15 +762,22 @@ impl TryFrom<&proto::adp::RouteMatch> for RouteMatch {
 			.iter()
 			.map(|h| match &h.value {
 				None => Err(ProtoError::Generic("invalid query match value".to_string())),
-				Some(proto::adp::query_match::Value::Exact(e)) => {
-					Ok(QueryMatch { name: strng::new(&h.name), value: QueryValueMatch::Exact(strng::new(e)) })
-				}
-				Some(proto::adp::query_match::Value::Regex(e)) => {
-					Ok(QueryMatch { name: strng::new(&h.name), value: QueryValueMatch::Regex(regex::Regex::new(e)?) })
-				}
+				Some(proto::adp::query_match::Value::Exact(e)) => Ok(QueryMatch {
+					name: strng::new(&h.name),
+					value: QueryValueMatch::Exact(strng::new(e)),
+				}),
+				Some(proto::adp::query_match::Value::Regex(e)) => Ok(QueryMatch {
+					name: strng::new(&h.name),
+					value: QueryValueMatch::Regex(regex::Regex::new(e)?),
+				}),
 			})
 			.collect::<Result<Vec<_>, _>>()?;
-		Ok(Self { headers, path, method, query })
+		Ok(Self {
+			headers,
+			path,
+			method,
+			query,
+		})
 	}
 }
 
@@ -758,7 +801,7 @@ impl TryFrom<&proto::adp::RouteFilter> for RouteFilter {
 						.collect(),
 					remove: rhm.remove.iter().map(strng::new).collect(),
 				})
-			}
+			},
 			Some(proto::adp::route_filter::Kind::RequestRedirect(rd)) => {
 				RouteFilter::RequestRedirect(filters::RequestRedirect {
 					scheme: default_as_none(rd.scheme.as_str())
@@ -771,25 +814,31 @@ impl TryFrom<&proto::adp::RouteFilter> for RouteFilter {
 						(None, None) => None,
 					},
 					path: match &rd.path {
-						Some(proto::adp::request_redirect::Path::Full(f)) => Some(PathRedirect::Full(strng::new(f))),
+						Some(proto::adp::request_redirect::Path::Full(f)) => {
+							Some(PathRedirect::Full(strng::new(f)))
+						},
 						Some(proto::adp::request_redirect::Path::Prefix(f)) => {
 							Some(PathRedirect::Prefix(strng::new(f)))
-						}
+						},
 						None => None,
 					},
 					status: default_as_none(rd.status)
 						.map(|i| StatusCode::from_u16(i as u16))
 						.transpose()?,
 				})
-			}
-			Some(proto::adp::route_filter::Kind::UrlRewrite(rw)) => RouteFilter::UrlRewrite(filters::UrlRewrite {
-				authority: default_as_none(rw.host.as_str()).map(|h| HostRedirect::Host(strng::new(h))),
-				path: match &rw.path {
-					Some(proto::adp::url_rewrite::Path::Full(f)) => Some(PathRedirect::Full(strng::new(f))),
-					Some(proto::adp::url_rewrite::Path::Prefix(f)) => Some(PathRedirect::Prefix(strng::new(f))),
-					None => None,
-				},
-			}),
+			},
+			Some(proto::adp::route_filter::Kind::UrlRewrite(rw)) => {
+				RouteFilter::UrlRewrite(filters::UrlRewrite {
+					authority: default_as_none(rw.host.as_str()).map(|h| HostRedirect::Host(strng::new(h))),
+					path: match &rw.path {
+						Some(proto::adp::url_rewrite::Path::Full(f)) => Some(PathRedirect::Full(strng::new(f))),
+						Some(proto::adp::url_rewrite::Path::Prefix(f)) => {
+							Some(PathRedirect::Prefix(strng::new(f)))
+						},
+						None => None,
+					},
+				})
+			},
 			Some(proto::adp::route_filter::Kind::ResponseHeaderModifier(rhm)) => {
 				RouteFilter::ResponseHeaderModifier(filters::HeaderModifier {
 					add: rhm
@@ -804,25 +853,26 @@ impl TryFrom<&proto::adp::RouteFilter> for RouteFilter {
 						.collect(),
 					remove: rhm.remove.iter().map(strng::new).collect(),
 				})
-			}
+			},
 			Some(proto::adp::route_filter::Kind::RequestMirror(m)) => {
 				RouteFilter::RequestMirror(filters::RequestMirror {
 					backend: match &m.kind {
 						None => Backend::Invalid,
 						Some(proto::adp::request_mirror::Kind::Service(svc_key)) => {
 							let ns = match svc_key.split_once('/') {
-								Some((namespace, hostname)) => {
-									Ok(NamespacedHostname { namespace: namespace.into(), hostname: hostname.into() })
-								}
+								Some((namespace, hostname)) => Ok(NamespacedHostname {
+									namespace: namespace.into(),
+									hostname: hostname.into(),
+								}),
 								None => Err(ProtoError::NamespacedHostnameParse(svc_key.clone())),
 							}?;
 							Backend::Service(ns)
-						}
+						},
 					},
 					port: m.port as u16,
 					percentage: m.percentage / 100.0,
 				})
-			}
+			},
 		})
 	}
 }

@@ -17,8 +17,8 @@ pub mod proto {
 }
 
 use crate::ext_proc::proto::{
-	BodyMutation, BodyResponse, HeadersResponse, HttpBody, HttpHeaders, HttpTrailers, ProcessingRequest,
-	ProcessingResponse,
+	BodyMutation, BodyResponse, HeadersResponse, HttpBody, HttpHeaders, HttpTrailers,
+	ProcessingRequest, ProcessingResponse,
 };
 use proto::body_mutation::Mutation;
 use proto::processing_request::Request;
@@ -32,7 +32,9 @@ pub struct ExtProc {
 impl ExtProc {
 	pub async fn new() -> anyhow::Result<ExtProc> {
 		error!("howardjohn: connecting...");
-		let mut c = proto::external_processor_client::ExternalProcessorClient::connect("http://127.0.0.1:9002").await?;
+		let mut c =
+			proto::external_processor_client::ExternalProcessorClient::connect("http://127.0.0.1:9002")
+				.await?;
 		error!("howardjohn: connected");
 		let (tx_req, rx_req) = tokio::sync::mpsc::channel(10);
 		let (tx_resp, rx_resp) = tokio::sync::mpsc::channel(10);
@@ -94,10 +96,15 @@ impl ExtProc {
 					let frame = frame.expect("TODO");
 					let preq = if frame.is_data() {
 						let frame = frame.into_data().expect("already checked");
-						processing_request(Request::RequestBody(HttpBody { body: frame.into(), end_of_stream: false }))
+						processing_request(Request::RequestBody(HttpBody {
+							body: frame.into(),
+							end_of_stream: false,
+						}))
 					} else if frame.is_trailers() {
 						let frame = frame.into_trailers().expect("already checked");
-						processing_request(Request::RequestTrailers(HttpTrailers { trailers: to_header_map(&frame) }))
+						processing_request(Request::RequestTrailers(HttpTrailers {
+							trailers: to_header_map(&frame),
+						}))
 					} else {
 						panic!("unknown type")
 					};
@@ -136,7 +143,7 @@ async fn handle_response(
 		msg => {
 			error!("howardjohn: ignoring {msg:?}");
 			return false;
-		}
+		},
 	};
 	if let Some(h) = cr.header_mutation {
 		for rm in &h.remove_headers {
@@ -160,15 +167,15 @@ async fn handle_response(
 					.send(Ok(Frame::data(bytes::Bytes::from(bb.body))))
 					.await;
 				return eos;
-			}
+			},
 			Mutation::Body(_) => {
 				panic!("not valid for streaming mode");
 				// *req = std::mem::take(req).map(|_| crate::proxy::http::Body::from(bb));
-			}
+			},
 			Mutation::ClearBody(_) => {
 				panic!("not valid for streaming mode");
 				// *req = std::mem::take(req).map(|_| crate::proxy::http::Body::empty());
-			}
+			},
 		}
 	}
 	error!("howardjohn: still waiting for response...");
@@ -178,7 +185,10 @@ async fn handle_response(
 fn to_header_map(headers: &http::HeaderMap) -> Option<proto::HeaderMap> {
 	let h = headers
 		.iter()
-		.map(|(k, v)| proto::HeaderValue { key: k.to_string(), raw_value: v.as_bytes().to_vec() })
+		.map(|(k, v)| proto::HeaderValue {
+			key: k.to_string(),
+			raw_value: v.as_bytes().to_vec(),
+		})
 		.collect_vec();
 	Some(proto::HeaderMap { headers: h })
 }

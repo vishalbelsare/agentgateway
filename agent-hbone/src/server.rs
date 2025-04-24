@@ -128,7 +128,11 @@ where
 	let (ping_drop_tx, mut ping_drop_rx) = oneshot::channel::<()>();
 	// for this fn to inform ping to give up when it is already dropped
 	let dropped = Arc::new(AtomicBool::new(false));
-	tokio::task::spawn(crate::do_ping_pong(ping_pong, ping_drop_tx, dropped.clone()));
+	tokio::task::spawn(crate::do_ping_pong(
+		ping_pong,
+		ping_drop_tx,
+		dropped.clone(),
+	));
 
 	let handler = |req, ext| handler(req, ext).map(|_| ());
 

@@ -86,10 +86,18 @@ pub fn handle_single_resource<T: prost::Message, F: FnMut(XdsUpdate<T>) -> anyho
 	let rejects: Vec<RejectedConfig> = updates
 		.filter_map(|res| {
 			let name = res.name();
-			if let Err(e) = handle_one(res) { Some(RejectedConfig::new(name, e)) } else { None }
+			if let Err(e) = handle_one(res) {
+				Some(RejectedConfig::new(name, e))
+			} else {
+				None
+			}
 		})
 		.collect();
-	if rejects.is_empty() { Ok(()) } else { Err(rejects) }
+	if rejects.is_empty() {
+		Ok(())
+	} else {
+		Err(rejects)
+	}
 }
 
 // Handler is responsible for handling a discovery response.
@@ -98,14 +106,21 @@ pub trait Handler<T: prost::Message>: Send + Sync + 'static {
 	fn no_on_demand(&self) -> bool {
 		false
 	}
-	fn handle(&self, res: Box<&mut dyn Iterator<Item = XdsUpdate<T>>>) -> Result<(), Vec<RejectedConfig>>;
+	fn handle(
+		&self,
+		res: Box<&mut dyn Iterator<Item = XdsUpdate<T>>>,
+	) -> Result<(), Vec<RejectedConfig>>;
 }
 
 // ResponseHandler is responsible for handling a discovery response.
 // Handlers can mutate state and return a list of rejected configurations (if there are any).
 // This is an internal only trait; public usage uses the Handler type which is typed.
 trait RawHandler: Send + Sync + 'static {
-	fn handle(&self, state: &mut State, res: DeltaDiscoveryResponse) -> Result<(), Vec<RejectedConfig>>;
+	fn handle(
+		&self,
+		state: &mut State,
+		res: DeltaDiscoveryResponse,
+	) -> Result<(), Vec<RejectedConfig>>;
 }
 
 // HandlerWrapper is responsible for implementing RawHandler the provided handler.
@@ -114,7 +129,11 @@ struct HandlerWrapper<T: prost::Message> {
 }
 
 impl<T: 'static + prost::Message + Default> RawHandler for HandlerWrapper<T> {
-	fn handle(&self, state: &mut State, res: DeltaDiscoveryResponse) -> Result<(), Vec<RejectedConfig>> {
+	fn handle(
+		&self,
+		state: &mut State,
+		res: DeltaDiscoveryResponse,
+	) -> Result<(), Vec<RejectedConfig>> {
 		let type_url = strng::new(res.type_url);
 		let removes = &res.removed_resources;
 
@@ -123,8 +142,10 @@ impl<T: 'static + prost::Message + Default> RawHandler for HandlerWrapper<T> {
 			.resources
 			.iter()
 			.map(|raw| {
-				decode_proto::<T>(raw)
-					.map_err(|err| RejectedConfig { name: raw.name.as_str().into(), reason: err.into() })
+				decode_proto::<T>(raw).map_err(|err| RejectedConfig {
+					name: raw.name.as_str().into(),
+					reason: err.into(),
+				})
 			})
 			.split(|i| i.is_ok());
 
@@ -148,7 +169,10 @@ impl<T: 'static + prost::Message + Default> RawHandler for HandlerWrapper<T> {
 		// after we update the proxy cache, we can update our xds cache. it's important that we do this after
 		// as we make on demand notifications here, so the proxy cache must be updated first.
 		for name in res.removed_resources {
-			let k = ResourceKey { name: name.into(), type_url: type_url.clone() };
+			let k = ResourceKey {
+				name: name.into(),
+				type_url: type_url.clone(),
+			};
 			debug!("received delete resource {k}");
 			if let Some(rm) = state.known_resources.get_mut(&k.type_url) {
 				rm.remove(&k.name);
@@ -157,7 +181,10 @@ impl<T: 'static + prost::Message + Default> RawHandler for HandlerWrapper<T> {
 		}
 
 		for r in res.resources {
-			let key = ResourceKey { name: r.name.into(), type_url: type_url.clone() };
+			let key = ResourceKey {
+				name: r.name.into(),
+				type_url: type_url.clone(),
+			};
 			state.notify_on_demand(&key);
 			state.add_resource(key.type_url, key.name);
 		}
@@ -170,7 +197,7 @@ impl<T: 'static + prost::Message + Default> RawHandler for HandlerWrapper<T> {
 			(Err(mut rejects), false) => {
 				rejects.extend(decode_failures);
 				Err(rejects)
-			}
+			},
 		}
 	}
 }
@@ -209,7 +236,8 @@ impl State {
 		}
 	}
 	fn add_resource(&mut self, type_url: Strng, name: Strng) {
-		self.known_resources
+		self
+			.known_resources
 			.entry(type_url)
 			.or_default()
 			.insert(name.clone());
@@ -222,7 +250,8 @@ impl Config {
 		F: 'static + prost::Message + Default,
 	{
 		let no_on_demand = f.no_on_demand();
-		self.with_handler(type_url.clone(), f)
+		self
+			.with_handler(type_url.clone(), f)
 			.watch(type_url, no_on_demand)
 	}
 
@@ -236,16 +265,21 @@ impl Config {
 	}
 
 	fn watch(mut self, type_url: Strng, no_on_demand: bool) -> Config {
-		self.initial_requests
+		self
+			.initial_requests
 			.push(self.construct_initial_request(type_url, no_on_demand));
 		self
 	}
 
 	fn build_struct<T: IntoIterator<Item = (S, S)>, S: ToString>(a: T) -> Struct {
-		let fields = BTreeMap::from_iter(
-			a.into_iter()
-				.map(|(k, v)| (k.to_string(), Value { kind: Some(Kind::StringValue(v.to_string())) })),
-		);
+		let fields = BTreeMap::from_iter(a.into_iter().map(|(k, v)| {
+			(
+				k.to_string(),
+				Value {
+					kind: Some(Kind::StringValue(v.to_string())),
+				},
+			)
+		}));
 		Struct { fields }
 	}
 
@@ -271,9 +305,9 @@ impl Config {
 					0f64
 				})),
 				String(s) => StringValue(s),
-				Array(v) => {
-					ListValue(prost_types::ListValue { values: v.into_iter().map(Self::json_to_value).collect() })
-				}
+				Array(v) => ListValue(prost_types::ListValue {
+					values: v.into_iter().map(Self::json_to_value).collect(),
+				}),
 				Object(v) => StructValue(Self::json_to_struct(v)),
 			}),
 		}
@@ -287,8 +321,12 @@ impl Config {
 		let ns = ns.as_deref().unwrap_or(EMPTY_STR);
 		let node_name = std::env::var(NODE_NAME);
 		let node_name = node_name.as_deref().unwrap_or(EMPTY_STR);
-		let mut metadata =
-			Self::build_struct([(NAME, pod_name), (NAMESPACE, ns), (INSTANCE_IPS, ip), (NODE_NAME, node_name)]);
+		let mut metadata = Self::build_struct([
+			(NAME, pod_name),
+			(NAMESPACE, ns),
+			(INSTANCE_IPS, ip),
+			(NODE_NAME, node_name),
+		]);
 		metadata
 			.fields
 			.append(&mut Self::build_struct(self.proxy_metadata.clone()).fields);
@@ -296,9 +334,10 @@ impl Config {
 		// Lookup ISTIO_METAJSON_* environment variables and add them to the node metadata
 		for (key, val) in std::env::vars().filter(|(key, _)| key.starts_with(ISTIO_METAJSON_PREFIX)) {
 			if let Ok(v) = serde_json::from_str(&val) {
-				metadata
-					.fields
-					.insert(key.trim_start_matches(ISTIO_METAJSON_PREFIX).to_string(), Self::json_to_value(v));
+				metadata.fields.insert(
+					key.trim_start_matches(ISTIO_METAJSON_PREFIX).to_string(),
+					Self::json_to_value(v),
+				);
 			} else {
 				error!("failed to parse {}={}", key, val);
 			}
@@ -310,7 +349,11 @@ impl Config {
 			..Default::default()
 		}
 	}
-	fn construct_initial_request(&self, request_type: Strng, no_on_demand: bool) -> DeltaDiscoveryRequest {
+	fn construct_initial_request(
+		&self,
+		request_type: Strng,
+		no_on_demand: bool,
+	) -> DeltaDiscoveryRequest {
 		let node = self.node();
 
 		let (sub, unsub) = if (!no_on_demand) && self.on_demand {
@@ -395,7 +438,8 @@ impl Demander {
 	/// Demand requests a given workload by name
 	pub async fn demand(&self, type_url: Strng, name: Strng) -> Demanded {
 		let (tx, rx) = oneshot::channel::<()>();
-		self.demand
+		self
+			.demand
 			.send((tx, ResourceKey { name, type_url }))
 			.await
 			// TODO: is this guaranteed? How can we handle the failure
@@ -414,20 +458,37 @@ impl AdsClient {
 
 	fn new(config: Config, metrics: Metrics, block_ready: tokio::sync::watch::Sender<()>) -> Self {
 		let (tx, rx) = mpsc::channel(100);
-		let state =
-			State { known_resources: Default::default(), pending: Default::default(), demand: rx, demand_tx: tx };
+		let state = State {
+			known_resources: Default::default(),
+			pending: Default::default(),
+			demand: rx,
+			demand_tx: tx,
+		};
 		let types_to_expect: HashSet<String> = config
 			.initial_requests
 			.iter()
 			.filter(|e| !Self::is_initial_request_on_demand(e)) // is_empty implies not ondemand
 			.map(|e| e.type_url.clone())
 			.collect();
-		AdsClient { config, state, metrics, block_ready: Some(block_ready), connection_id: 0, types_to_expect }
+		AdsClient {
+			config,
+			state,
+			metrics,
+			block_ready: Some(block_ready),
+			connection_id: 0,
+			types_to_expect,
+		}
 	}
 
 	/// demander returns a Demander instance which can be used to request resources on-demand
 	pub fn demander(&self) -> Option<Demander> {
-		if self.config.on_demand { Some(Demander { demand: self.state.demand_tx.clone() }) } else { None }
+		if self.config.on_demand {
+			Some(Demander {
+				demand: self.state.demand_tx.clone(),
+			})
+		} else {
+			None
+		}
 	}
 
 	async fn run_loop(&mut self, backoff: Duration) -> Duration {
@@ -435,33 +496,46 @@ impl AdsClient {
 			Err(e @ Error::Connection(_, _)) => {
 				// For connection errors, we add backoff
 				let backoff = std::cmp::min(MAX_BACKOFF, backoff * 2);
-				warn!("XDS client connection error: {}, retrying in {:?}", e, backoff);
-				self.metrics
+				warn!(
+					"XDS client connection error: {}, retrying in {:?}",
+					e, backoff
+				);
+				self
+					.metrics
 					.increment(&ConnectionTerminationReason::ConnectionError);
 				tokio::time::sleep(backoff).await;
 				backoff
-			}
+			},
 			Err(ref e @ Error::GrpcStatus(ref status)) => {
 				let err_detail = e.to_string();
 				let backoff = if status.code() == tonic::Code::Unknown
 					|| status.code() == tonic::Code::Cancelled
 					|| status.code() == tonic::Code::DeadlineExceeded
-					|| (status.code() == tonic::Code::Unavailable && status.message().contains("transport is closing"))
-					|| (status.code() == tonic::Code::Unavailable && status.message().contains("received prior goaway"))
+					|| (status.code() == tonic::Code::Unavailable
+						&& status.message().contains("transport is closing"))
+					|| (status.code() == tonic::Code::Unavailable
+						&& status.message().contains("received prior goaway"))
 				{
-					debug!("XDS client terminated: {}, retrying in {:?}", err_detail, backoff);
-					self.metrics
+					debug!(
+						"XDS client terminated: {}, retrying in {:?}",
+						err_detail, backoff
+					);
+					self
+						.metrics
 						.increment(&ConnectionTerminationReason::Reconnect);
 					INITIAL_BACKOFF
 				} else {
-					warn!("XDS client error: {e:?} {status:?}, retrying in {:?} x", backoff);
+					warn!(
+						"XDS client error: {e:?} {status:?}, retrying in {:?} x",
+						backoff
+					);
 					self.metrics.increment(&ConnectionTerminationReason::Error);
 					// For gRPC errors, we add backoff
 					std::cmp::min(MAX_BACKOFF, backoff * 2)
 				};
 				tokio::time::sleep(backoff).await;
 				backoff
-			}
+			},
 			Err(e) => {
 				// For other errors, we connect immediately
 				// TODO: we may need more nuance here; if we fail due to invalid initial request we may overload
@@ -470,14 +544,15 @@ impl AdsClient {
 				self.metrics.increment(&ConnectionTerminationReason::Error);
 				// Reset backoff
 				INITIAL_BACKOFF
-			}
+			},
 			Ok(_) => {
-				self.metrics
+				self
+					.metrics
 					.increment(&ConnectionTerminationReason::Complete);
 				warn!("XDS client complete");
 				// Reset backoff
 				INITIAL_BACKOFF
-			}
+			},
 		}
 	}
 
@@ -593,15 +668,16 @@ impl AdsClient {
 			removes = response.removed_resources.len(),
 			"received response"
 		);
-		let handler_response: Result<(), Vec<RejectedConfig>> = match self.config.handlers.get(&strng::new(&type_url)) {
-			Some(h) => h.handle(&mut self.state, response),
-			None => {
-				error!(%type_url, "unknown type");
-				// TODO: this will just send another discovery request, to server. We should
-				// either send one with an error or not send one at all.
-				Ok(())
-			}
-		};
+		let handler_response: Result<(), Vec<RejectedConfig>> =
+			match self.config.handlers.get(&strng::new(&type_url)) {
+				Some(h) => h.handle(&mut self.state, response),
+				None => {
+					error!(%type_url, "unknown type");
+					// TODO: this will just send another discovery request, to server. We should
+					// either send one with an error or not send one at all.
+					Ok(())
+				},
+			};
 
 		let (response_type, error) = match handler_response {
 			Err(rejects) => {
@@ -611,7 +687,7 @@ impl AdsClient {
 					.collect::<Vec<String>>()
 					.join("; ");
 				(XdsSignal::Nack, Some(error))
-			}
+			},
 			_ => (XdsSignal::Ack, None),
 		};
 
@@ -631,15 +707,19 @@ impl AdsClient {
 			),
 		};
 
-		send.send(DeltaDiscoveryRequest {
-			type_url,              // this is owned, OK to move
-			response_nonce: nonce, // this is owned, OK to move
-			error_detail: error.map(|msg| Status { message: msg, ..Default::default() }),
-			..Default::default()
-		})
-		.await
-		.map_err(|e| Error::RequestFailure(Box::new(e)))
-		.map(|_| response_type)
+		send
+			.send(DeltaDiscoveryRequest {
+				type_url,              // this is owned, OK to move
+				response_nonce: nonce, // this is owned, OK to move
+				error_detail: error.map(|msg| Status {
+					message: msg,
+					..Default::default()
+				}),
+				..Default::default()
+			})
+			.await
+			.map_err(|e| Error::RequestFailure(Box::new(e)))
+			.map(|_| response_type)
 	}
 
 	async fn handle_demand_event(
@@ -654,13 +734,14 @@ impl AdsClient {
 		let ResourceKey { type_url, name } = demand_event.clone();
 		self.state.pending.insert(demand_event, tx);
 		self.state.add_resource(type_url.clone(), name.clone());
-		send.send(DeltaDiscoveryRequest {
-			type_url: type_url.to_string(),
-			resource_names_subscribe: vec![name.to_string()],
-			..Default::default()
-		})
-		.await
-		.map_err(|e| Error::RequestFailure(Box::new(e)))?;
+		send
+			.send(DeltaDiscoveryRequest {
+				type_url: type_url.to_string(),
+				resource_names_subscribe: vec![name.to_string()],
+				..Default::default()
+			})
+			.await
+			.map_err(|e| Error::RequestFailure(Box::new(e)))?;
 		Ok(())
 	}
 }
@@ -686,7 +767,9 @@ impl<T: prost::Message> XdsUpdate<T> {
 	}
 }
 
-fn decode_proto<T: prost::Message + Default>(resource: &ProtoResource) -> Result<XdsResource<T>, AdsError> {
+fn decode_proto<T: prost::Message + Default>(
+	resource: &ProtoResource,
+) -> Result<XdsResource<T>, AdsError> {
 	let name = resource.name.as_str().into();
 	resource
 		.resource

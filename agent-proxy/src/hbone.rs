@@ -35,12 +35,23 @@ impl HBONEConnector {
 		cfg: &crate::Config,
 		local_workload_information: Arc<LocalWorkloadInformation>,
 	) -> Self {
-		let pool = agent_hbone::pool::WorkloadHBONEPool::new(cfg.hbone.clone(), local_workload_information);
-		let inner = Inner { pool, state, network: cfg.network.clone() };
-		Self { http: Self::http(), hbone: Some(inner) }
+		let pool =
+			agent_hbone::pool::WorkloadHBONEPool::new(cfg.hbone.clone(), local_workload_information);
+		let inner = Inner {
+			pool,
+			state,
+			network: cfg.network.clone(),
+		};
+		Self {
+			http: Self::http(),
+			hbone: Some(inner),
+		}
 	}
 	pub fn new_disabled() -> Self {
-		Self { http: Self::http(), hbone: None }
+		Self {
+			http: Self::http(),
+			hbone: None,
+		}
 	}
 	fn http() -> HttpConnector {
 		let mut http = HttpConnector::new();
@@ -95,8 +106,10 @@ impl tower::Service<Uri> for HBONEConnector {
 				let wl = {
 					let st = hbone.state.read_discovery();
 
-					st.workloads
-						.find_address(&NetworkAddress { network: hbone.network.clone(), address: socket })
+					st.workloads.find_address(&NetworkAddress {
+						network: hbone.network.clone(),
+						address: socket,
+					})
 				};
 				if let Some(wl) = wl {
 					if wl.protocol == discovery::InboundProtocol::HBONE {
@@ -117,14 +130,19 @@ impl tower::Service<Uri> for HBONEConnector {
 						let upgraded = Box::pin(hbone.pool.send_request_pooled(&pool_key, req))
 							.await
 							.map_err(crate::http::Error::new)?;
-						let rw = agent_hbone::RWStream { stream: upgraded, buf: Default::default() };
+						let rw = agent_hbone::RWStream {
+							stream: upgraded,
+							buf: Default::default(),
+						};
 						let socket = Socket::from_hbone(Arc::new(Extension::new()), dst, rw);
 						return Ok(TokioIo::new(socket));
 					}
 				}
 			}
 			let res = it.http.call(dst).await.map_err(crate::http::Error::new)?;
-			Ok(TokioIo::new(crate::stream::Socket::from_tcp(res.into_inner()).map_err(crate::http::Error::new)?))
+			Ok(TokioIo::new(
+				crate::stream::Socket::from_tcp(res.into_inner()).map_err(crate::http::Error::new)?,
+			))
 		})
 	}
 }
@@ -133,7 +151,10 @@ impl LocalWorkloadInformation {}
 
 #[async_trait]
 impl agent_hbone::pool::CertificateFetcher<WorkloadKey> for LocalWorkloadInformation {
-	async fn fetch_certificate(&self, key: WorkloadKey) -> anyhow::Result<Arc<rustls::client::ClientConfig>> {
+	async fn fetch_certificate(
+		&self,
+		key: WorkloadKey,
+	) -> anyhow::Result<Arc<rustls::client::ClientConfig>> {
 		Err(anyhow::anyhow!("TODO"))
 	}
 }

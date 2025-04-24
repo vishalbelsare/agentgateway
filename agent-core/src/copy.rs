@@ -65,14 +65,22 @@ impl BufferedSplitter for TcpStreamSplitter {
 
 // AsyncWriteBuf is like AsyncWrite, but writes a Bytes instead of &[u8]. This allows avoiding copies.
 pub trait AsyncWriteBuf {
-	fn poll_write_buf(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: Bytes) -> Poll<std::io::Result<usize>>;
+	fn poll_write_buf(
+		self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+		buf: Bytes,
+	) -> Poll<std::io::Result<usize>>;
 	fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>>;
 	fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>>;
 }
 
 // Allow &T to be AsyncWriteBuf
 impl<T: ?Sized + AsyncWriteBuf + Unpin> AsyncWriteBuf for &mut T {
-	fn poll_write_buf(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: Bytes) -> Poll<std::io::Result<usize>> {
+	fn poll_write_buf(
+		mut self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+		buf: Bytes,
+	) -> Poll<std::io::Result<usize>> {
 		Pin::new(&mut **self).poll_write_buf(cx, buf)
 	}
 
@@ -89,7 +97,11 @@ impl<T: ?Sized + AsyncWriteBuf + Unpin> AsyncWriteBuf for &mut T {
 pub struct WriteAdapter<T>(T);
 
 impl<T: AsyncWrite + Unpin> AsyncWriteBuf for WriteAdapter<T> {
-	fn poll_write_buf(mut self: Pin<&mut Self>, cx: &mut Context<'_>, mut buf: Bytes) -> Poll<std::io::Result<usize>> {
+	fn poll_write_buf(
+		mut self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+		mut buf: Bytes,
+	) -> Poll<std::io::Result<usize>> {
 		poll_write_buf(Pin::new(&mut self.0), cx, &mut buf)
 	}
 
@@ -141,7 +153,9 @@ pub enum CopyError {
 	#[error("requested service {0} found, but has no IP addresses")]
 	NoIPForService(String),
 
-	#[error("ip addresses were resolved for workload {0}, but valid dns response had no A/AAAA records")]
+	#[error(
+		"ip addresses were resolved for workload {0}, but valid dns response had no A/AAAA records"
+	)]
 	EmptyResolvedAddresses(String),
 
 	#[error("attempted recursive call to ourselves")]
@@ -174,7 +188,11 @@ impl ConnectionResult {
 	}
 }
 
-pub async fn copy_bidirectional<A, B>(downstream: A, upstream: B, stats: &ConnectionResult) -> Result<(), CopyError>
+pub async fn copy_bidirectional<A, B>(
+	downstream: A,
+	upstream: B,
+	stats: &ConnectionResult,
+) -> Result<(), CopyError>
 where
 	A: BufferedSplitter,
 	B: BufferedSplitter,
@@ -190,7 +208,8 @@ where
 				_ => e.into(),
 			}))
 		};
-		let res = ignore_io_errors(copy_buf(&mut rd, &mut wu, stats, false).await).map_err(translate_error);
+		let res =
+			ignore_io_errors(copy_buf(&mut rd, &mut wu, stats, false).await).map_err(translate_error);
 		trace!(?res, "send");
 		ignore_shutdown_errors(shutdown(&mut wu).await)
 			.map_err(translate_error)
@@ -206,7 +225,8 @@ where
 				_ => e.into(),
 			}))
 		};
-		let res = ignore_io_errors(copy_buf(&mut ru, &mut wd, stats, true).await).map_err(translate_error);
+		let res =
+			ignore_io_errors(copy_buf(&mut ru, &mut wd, stats, true).await).map_err(translate_error);
 		trace!(?res, "receive");
 		ignore_shutdown_errors(shutdown(&mut wd).await)
 			.map_err(translate_error)
@@ -238,7 +258,7 @@ fn ignore_io_errors<T: Default>(res: Result<T, io::Error>) -> Result<T, io::Erro
 				// Returning Default here is very hacky, but the data we are returning isn't critical so its no so bad to lose it.
 				// Changing this would require refactoring all the interfaces to always return the bytes written even on error.
 				Ok(Default::default())
-			}
+			},
 			_ => res,
 		},
 		_ => res,
@@ -249,10 +269,12 @@ fn ignore_io_errors<T: Default>(res: Result<T, io::Error>) -> Result<T, io::Erro
 // Ignore it.
 fn ignore_shutdown_errors(res: Result<(), io::Error>) -> Result<(), io::Error> {
 	match &res {
-		Err(e) if e.kind() == io::ErrorKind::NotConnected || e.kind() == io::ErrorKind::UnexpectedEof => {
+		Err(e)
+			if e.kind() == io::ErrorKind::NotConnected || e.kind() == io::ErrorKind::UnexpectedEof =>
+		{
 			trace!(err=%e, "failed to shutdown peer, they already shutdown");
 			Ok(())
-		}
+		},
 		_ => res,
 	}
 }
@@ -278,7 +300,15 @@ where
 	R: ResizeBufRead + Unpin + ?Sized,
 	W: AsyncWriteBuf + Unpin + ?Sized,
 {
-	CopyBuf { send: is_send, reader, writer, buf: None, metrics, amt: 0 }.await
+	CopyBuf {
+		send: is_send,
+		reader,
+		writer,
+		buf: None,
+		metrics,
+		amt: 0,
+	}
+	.await
 }
 
 impl<R, W> Future for CopyBuf<'_, R, W>
@@ -310,7 +340,7 @@ where
 				Poll::Pending => {
 					me.buf = Some(our_copy);
 					return Poll::Pending;
-				}
+				},
 			};
 			if i == 0 {
 				return Poll::Ready(Err(std::io::ErrorKind::WriteZero.into()));
@@ -352,7 +382,11 @@ pin_project! {
 impl<R: AsyncRead> BufReader<R> {
 	/// Creates a new `BufReader` with a default buffer capacity. The default is currently INITIAL_BUFFER_SIZE
 	pub fn new(inner: R) -> Self {
-		Self { inner, buf: BytesMut::with_capacity(INITIAL_BUFFER_SIZE), buffer_size: INITIAL_BUFFER_SIZE }
+		Self {
+			inner,
+			buf: BytesMut::with_capacity(INITIAL_BUFFER_SIZE),
+			buffer_size: INITIAL_BUFFER_SIZE,
+		}
 	}
 }
 
@@ -392,7 +426,10 @@ pub fn shutdown<A>(a: &mut A) -> Shutdown<'_, A>
 where
 	A: AsyncWriteBuf + Unpin + ?Sized,
 {
-	Shutdown { a, _pin: PhantomPinned }
+	Shutdown {
+		a,
+		_pin: PhantomPinned,
+	}
 }
 
 impl<A> Future for Shutdown<'_, A>

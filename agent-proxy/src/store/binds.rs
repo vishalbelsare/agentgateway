@@ -1,4 +1,6 @@
-use crate::types::agent::{Bind, BindName, Event, Listener, ListenerName, ListenerSet, Route, RouteName};
+use crate::types::agent::{
+	Bind, BindName, Event, Listener, ListenerName, ListenerSet, Route, RouteName,
+};
 use crate::*;
 use futures_core::Stream;
 use std::collections::HashMap;
@@ -22,9 +24,14 @@ impl Default for Store {
 impl Store {
 	pub fn new() -> Self {
 		let (tx, _) = tokio::sync::broadcast::channel(10);
-		Self { by_name: Default::default(), tx }
+		Self {
+			by_name: Default::default(),
+			tx,
+		}
 	}
-	pub fn subscribe(&self) -> (impl Stream<Item = Result<Event<Arc<Bind>>, BroadcastStreamRecvError>> + use<>) {
+	pub fn subscribe(
+		&self,
+	) -> (impl Stream<Item = Result<Event<Arc<Bind>>, BroadcastStreamRecvError>> + use<>) {
 		let sub = self.tx.subscribe();
 		tokio_stream::wrappers::BroadcastStream::new(sub)
 	}

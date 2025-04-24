@@ -56,7 +56,11 @@ impl Metrics {
 
 		let message_count = Family::default();
 
-		registry.register("xds_message", "Total number of messages received (unstable)", message_count.clone());
+		registry.register(
+			"xds_message",
+			"Total number of messages received (unstable)",
+			message_count.clone(),
+		);
 
 		let total_messages_size = Family::default();
 
@@ -67,13 +71,18 @@ impl Metrics {
 			total_messages_size.clone(),
 		);
 
-		Self { connection_terminations, message_types: message_count, total_messages_size }
+		Self {
+			connection_terminations,
+			message_types: message_count,
+			total_messages_size,
+		}
 	}
 }
 
 impl Recorder<ConnectionTerminationReason, u64> for Metrics {
 	fn record(&self, reason: &ConnectionTerminationReason, count: u64) {
-		self.connection_terminations
+		self
+			.connection_terminations
 			.get_or_create(&ConnectionTermination { reason: *reason })
 			.inc_by(count);
 	}
@@ -81,7 +90,9 @@ impl Recorder<ConnectionTerminationReason, u64> for Metrics {
 
 impl Recorder<DeltaDiscoveryResponse, ()> for Metrics {
 	fn record(&self, response: &DeltaDiscoveryResponse, _: ()) {
-		let type_url = TypeUrl { url: response.type_url.clone() };
+		let type_url = TypeUrl {
+			url: response.type_url.clone(),
+		};
 		self.message_types.get_or_create(&type_url).inc();
 
 		let mut total_message_size: u64 = 0;
@@ -92,7 +103,8 @@ impl Recorder<DeltaDiscoveryResponse, ()> for Metrics {
 				.map(|v| v.value.len())
 				.unwrap_or_default() as u64;
 		}
-		self.total_messages_size
+		self
+			.total_messages_size
 			.get_or_create(&type_url)
 			.inc_by(total_message_size);
 	}

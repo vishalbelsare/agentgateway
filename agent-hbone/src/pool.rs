@@ -61,7 +61,7 @@ impl<K> Debug for WorkloadHBONEPool<K> {
 // PoolState is effectively the gnarly inner state stuff that needs thread/task sync, and should be wrapped in a Mutex.
 struct PoolState<K> {
 	pool_notifier: watch::Sender<bool>, // This is already impl clone? rustc complains that it isn't, tho
-	timeout_tx: watch::Sender<bool>,    // This is already impl clone? rustc complains that it isn't, tho
+	timeout_tx: watch::Sender<bool>, // This is already impl clone? rustc complains that it isn't, tho
 	// this is effectively just a convenience data type - a rwlocked hashmap with keying and LRU drops
 	// and has no actual hyper/http/connection logic.
 	connected_pool: Arc<pingora_pool::ConnectionPool<H2ConnectClient<K>>>,
@@ -91,15 +91,18 @@ impl<K: Key> ConnSpawner<K> {
 			.await
 			.map_err(|e: io::Error| match e.kind() {
 				io::ErrorKind::TimedOut => {
-					anyhow::anyhow!("connection timed out, maybe a NetworkPolicy is blocking HBONE port 15008: {e}")
-				}
+					anyhow::anyhow!(
+						"connection timed out, maybe a NetworkPolicy is blocking HBONE port 15008: {e}"
+					)
+				},
 				_ => e.into(),
 			})?;
 
 		let tls_stream = connect(connector, tcp_stream).await?;
 		trace!("connector connected, handshaking");
 		let sender =
-			crate::client::spawn_connection(self.cfg.clone(), tls_stream, self.timeout_rx.clone(), key).await?;
+			crate::client::spawn_connection(self.cfg.clone(), tls_stream, self.timeout_rx.clone(), key)
+				.await?;
 		Ok(sender)
 	}
 }
@@ -113,8 +116,11 @@ where
 {
 	let c = tokio_rustls::TlsConnector::from(cfg);
 	// Use dummy value for domain because it doesn't matter.
-	c.connect(ServerName::IpAddress(std::net::Ipv4Addr::new(0, 0, 0, 0).into()), stream)
-		.await
+	c.connect(
+		ServerName::IpAddress(std::net::Ipv4Addr::new(0, 0, 0, 0).into()),
+		stream,
+	)
+	.await
 }
 
 impl<K: Key> PoolState<K> {
@@ -140,7 +146,10 @@ impl<K: Key> PoolState<K> {
 	// they must also drop those before the underlying connection is fully closed.
 	fn maybe_checkin_conn(&self, conn: H2ConnectClient<K>, pool_key: pingora_pool::ConnectionMeta) {
 		if conn.will_be_at_max_streamcount() {
-			debug!("checked out connection for {:?} is now at max streamcount; removing from pool", pool_key);
+			debug!(
+				"checked out connection for {:?} is now at max streamcount; removing from pool",
+				pool_key
+			);
 			return;
 		}
 		let (evict, pickup) = self.connected_pool.put(&pool_key, conn);
@@ -154,7 +163,10 @@ impl<K: Key> PoolState<K> {
 				pool_ref
 					.idle_timeout(&pool_key_ref, release_timeout, evict, rx, pickup)
 					.await;
-				debug!("connection {:?} was removed/checked out/timed out of the pool", pool_key_ref)
+				debug!(
+					"connection {:?} was removed/checked out/timed out of the pool",
+					pool_key_ref
+				)
 			}
 			.in_current_span(),
 		);
@@ -163,7 +175,11 @@ impl<K: Key> PoolState<K> {
 
 	// Since we are using a hash key to do lookup on the inner pingora pool, do a get guard
 	// to make sure what we pull out actually deep-equals the workload_key, to avoid *sigh* crossing the streams.
-	fn guarded_get(&self, hash_key: &u64, workload_key: &K) -> anyhow::Result<Option<H2ConnectClient<K>>> {
+	fn guarded_get(
+		&self,
+		hash_key: &u64,
+		workload_key: &K,
+	) -> anyhow::Result<Option<H2ConnectClient<K>>> {
 		match self.connected_pool.get(hash_key) {
 			None => Ok(None),
 			Some(conn) => match Self::enforce_key_integrity(conn, workload_key) {
@@ -178,7 +194,10 @@ impl<K: Key> PoolState<K> {
 	// not equal the provided key
 	//
 	// this is a final safety check for collisions, we will throw up our hands and refuse to return the conn
-	fn enforce_key_integrity(conn: H2ConnectClient<K>, expected_key: &K) -> anyhow::Result<H2ConnectClient<K>> {
+	fn enforce_key_integrity(
+		conn: H2ConnectClient<K>,
+		expected_key: &K,
+	) -> anyhow::Result<H2ConnectClient<K>> {
 		match conn.is_for_workload(expected_key) {
 			Ok(()) => Ok(conn),
 			Err(e) => Err(e),
@@ -229,15 +248,21 @@ impl<K: Key> PoolState<K> {
 				debug!("nothing else is creating a conn and we won the lock, make one");
 				let client = self.spawner.new_pool_conn(workload_key.clone()).await?;
 
-				debug!("checking in new conn for {} with pk {:?}", workload_key, pool_key);
+				debug!(
+					"checking in new conn for {} with pk {:?}",
+					workload_key, pool_key
+				);
 				self.maybe_checkin_conn(client.clone(), pool_key.clone());
 				Ok(Some(client))
 				// END take inner writelock
-			}
+			},
 			Err(_) => {
-				debug!("did not win connlock for {}, something else has it", workload_key);
+				debug!(
+					"did not win connlock for {}, something else has it",
+					workload_key
+				);
 				Ok(None)
-			}
+			},
 		}
 	}
 
@@ -275,26 +300,35 @@ impl<K: Key> PoolState<K> {
 		let Some(exist_conn_lock) = found_conn else {
 			return Ok(None);
 		};
-		debug!("checkout - found mutex for pool key {:?}, waiting for writelock", pool_key);
+		debug!(
+			"checkout - found mutex for pool key {:?}, waiting for writelock",
+			pool_key
+		);
 		let _conn_lock = exist_conn_lock.as_ref().lock().await;
 
-		trace!("checkout - got writelock for conn with key {} and hash {:?}", workload_key, pool_key.key);
+		trace!(
+			"checkout - got writelock for conn with key {} and hash {:?}",
+			workload_key, pool_key.key
+		);
 		let returned_connection = loop {
 			match self.guarded_get(&pool_key.key, workload_key)? {
 				Some(mut existing) => {
 					if !existing.ready_to_use() {
 						// We checked this out, and will not check it back in
 						// Loop again to find another/make a new one
-						debug!("checked out broken connection for {}, dropping it", workload_key);
+						debug!(
+							"checked out broken connection for {}, dropping it",
+							workload_key
+						);
 						continue;
 					}
 					debug!("re-using connection for {}", workload_key);
 					break existing;
-				}
+				},
 				None => {
 					debug!("new connection needed for {}", workload_key);
 					break self.spawner.new_pool_conn(workload_key.clone()).await?;
-				}
+				},
 			};
 		};
 
@@ -320,12 +354,19 @@ impl<K: Key> WorkloadHBONEPool<K> {
 	// Creates a new pool instance, which should be owned by a single proxied workload.
 	// The pool will watch the provided drain signal and drain itself when notified.
 	// Callers should then be safe to drop() the pool instance.
-	pub fn new(cfg: Arc<crate::Config>, local_workload: Arc<dyn CertificateFetcher<K>>) -> WorkloadHBONEPool<K> {
+	pub fn new(
+		cfg: Arc<crate::Config>,
+		local_workload: Arc<dyn CertificateFetcher<K>>,
+	) -> WorkloadHBONEPool<K> {
 		let (timeout_tx, timeout_rx) = watch::channel(false);
 		let (timeout_send, timeout_recv) = watch::channel(false);
 		let pool_duration = cfg.pool_unused_release_timeout;
 
-		let spawner = ConnSpawner { cfg, certificates: local_workload, timeout_rx: timeout_recv.clone() };
+		let spawner = ConnSpawner {
+			cfg,
+			certificates: local_workload,
+			timeout_rx: timeout_recv.clone(),
+		};
 
 		Self {
 			state: Arc::new(PoolState {
@@ -369,7 +410,8 @@ impl<K: Key> WorkloadHBONEPool<K> {
 		let hash_key = s.finish();
 		let pool_key = pingora_pool::ConnectionMeta::new(
 			hash_key,
-			self.state
+			self
+				.state
 				.pool_global_conn_count
 				.fetch_add(1, Ordering::SeqCst),
 		);
@@ -392,19 +434,22 @@ impl<K: Key> WorkloadHBONEPool<K> {
 		//
 		// (if multiple threads try to insert one, only one will succeed.)
 		{
-			debug!("didn't find a connection for key {:?}, making sure lockmap has entry", hash_key);
+			debug!(
+				"didn't find a connection for key {:?}, making sure lockmap has entry",
+				hash_key
+			);
 			let guard = self.state.established_conn_writelock.guard();
-			match self
-				.state
-				.established_conn_writelock
-				.try_insert(hash_key, Some(Arc::new(Mutex::new(()))), &guard)
-			{
+			match self.state.established_conn_writelock.try_insert(
+				hash_key,
+				Some(Arc::new(Mutex::new(()))),
+				&guard,
+			) {
 				Ok(_) => {
 					debug!("inserting conn mutex for key {:?} into lockmap", hash_key);
-				}
+				},
 				Err(_) => {
 					debug!("already have conn for key {:?} in lockmap", hash_key);
-				}
+				},
 			}
 		}
 
@@ -447,7 +492,10 @@ impl<K: Key> WorkloadHBONEPool<K> {
 				loop {
 					match self.pool_watcher.changed().await {
 						Ok(_) => {
-							trace!("notified a new conn was enpooled, checking for hash {:?}", hash_key);
+							trace!(
+								"notified a new conn was enpooled, checking for hash {:?}",
+								hash_key
+							);
 							// Notifier fired, try and get a conn out for our key.
 							let existing_conn = self
 								.state
@@ -460,19 +508,19 @@ impl<K: Key> WorkloadHBONEPool<K> {
 										hash_key
 									);
 									continue;
-								}
+								},
 								Some(e_conn) => {
 									debug!("found existing conn after waiting");
 									break e_conn;
-								}
+								},
 							}
-						}
+						},
 						Err(_) => {
 							return Err(anyhow!("pool draining"));
-						}
+						},
 					}
 				}
-			}
+			},
 		};
 		Ok(res)
 	}

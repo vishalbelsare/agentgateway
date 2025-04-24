@@ -25,9 +25,15 @@ impl Policy {
 			} => {
 				// We do not distinguish these yet, so just take min
 				Some(cmp::min(*request_timeout, *backend_request_timeout))
-			}
-			Policy { request_timeout: Some(request_timeout), .. } => Some(*request_timeout),
-			Policy { backend_request_timeout: Some(backend_request_timeout), .. } => Some(*backend_request_timeout),
+			},
+			Policy {
+				request_timeout: Some(request_timeout),
+				..
+			} => Some(*request_timeout),
+			Policy {
+				backend_request_timeout: Some(backend_request_timeout),
+				..
+			} => Some(*backend_request_timeout),
 			_ => None,
 		}
 	}
@@ -57,7 +63,11 @@ pin_project! {
 impl<B> TimeoutBody<B> {
 	/// Creates a new [`TimeoutBody`].
 	pub fn new(timeout: BodyTimeout, body: B) -> Self {
-		TimeoutBody { timeout, sleep: None, body }
+		TimeoutBody {
+			timeout,
+			sleep: None,
+			body,
+		}
 	}
 }
 
@@ -82,10 +92,10 @@ where
 			match this.timeout {
 				BodyTimeout::Duration(d) => {
 					this.sleep.set(Some(sleep(*d)));
-				}
+				},
 				BodyTimeout::Deadline(d) => {
 					this.sleep.set(Some(sleep_until(*d)));
-				}
+				},
 			}
 			this.sleep.as_mut().as_pin_mut().unwrap()
 		};
@@ -152,7 +162,8 @@ mod tests {
 			cx: &mut Context<'_>,
 		) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
 			let this = self.project();
-			this.sleep
+			this
+				.sleep
 				.poll(cx)
 				.map(|_| Some(Ok(Frame::data(vec![].into()))))
 		}
@@ -163,7 +174,9 @@ mod tests {
 		let mock_sleep = Duration::from_secs(1);
 		let timeout_sleep = Duration::from_secs(2);
 
-		let mock_body = MockBody { sleep: sleep(mock_sleep) };
+		let mock_body = MockBody {
+			sleep: sleep(mock_sleep),
+		};
 		let timeout_body = TimeoutBody::new(BodyTimeout::Duration(timeout_sleep), mock_body);
 
 		assert!(
@@ -181,7 +194,9 @@ mod tests {
 		let mock_sleep = Duration::from_secs(2);
 		let timeout_sleep = Duration::from_secs(1);
 
-		let mock_body = MockBody { sleep: sleep(mock_sleep) };
+		let mock_body = MockBody {
+			sleep: sleep(mock_sleep),
+		};
 		let timeout_body = TimeoutBody::new(BodyTimeout::Duration(timeout_sleep), mock_body);
 
 		assert!(timeout_body.boxed().frame().await.unwrap().is_err());

@@ -111,7 +111,11 @@ impl Workload {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub enum Identity {
-	Spiffe { trust_domain: Strng, namespace: Strng, service_account: Strng },
+	Spiffe {
+		trust_domain: Strng,
+		namespace: Strng,
+		service_account: Strng,
+	},
 }
 
 impl EncodeLabelValue for Identity {
@@ -156,23 +160,38 @@ impl FromStr for Identity {
 impl Display for Identity {
 	fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
 		match self {
-			Identity::Spiffe { trust_domain, namespace, service_account } => {
-				write!(f, "spiffe://{trust_domain}/ns/{namespace}/sa/{service_account}")
-			}
+			Identity::Spiffe {
+				trust_domain,
+				namespace,
+				service_account,
+			} => {
+				write!(
+					f,
+					"spiffe://{trust_domain}/ns/{namespace}/sa/{service_account}"
+				)
+			},
 		}
 	}
 }
 
 impl Identity {
 	pub fn from_parts(td: Strng, ns: Strng, sa: Strng) -> Identity {
-		Identity::Spiffe { trust_domain: td, namespace: ns, service_account: sa }
+		Identity::Spiffe {
+			trust_domain: td,
+			namespace: ns,
+			service_account: sa,
+		}
 	}
 
 	pub fn to_strng(self: &Identity) -> Strng {
 		match self {
-			Identity::Spiffe { trust_domain, namespace, service_account } => {
+			Identity::Spiffe {
+				trust_domain,
+				namespace,
+				service_account,
+			} => {
 				strng::format!("spiffe://{trust_domain}/ns/{namespace}/sa/{service_account}")
-			}
+			},
 		}
 	}
 
@@ -189,7 +208,19 @@ fn is_default<T: Default + PartialEq>(t: &T) -> bool {
 
 // The protocol that the sender should use to send data. Can be different from ServerProtocol when there is a
 // proxy in the middle (e.g. e/w gateway with double hbone).
-#[derive(Default, Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(
+	Default,
+	Debug,
+	Hash,
+	Eq,
+	PartialEq,
+	Ord,
+	PartialOrd,
+	Clone,
+	Copy,
+	serde::Serialize,
+	serde::Deserialize,
+)]
 pub enum OutboundProtocol {
 	#[default]
 	TCP,
@@ -236,7 +267,19 @@ pub mod gatewayaddress {
 }
 
 // The protocol that the final workload expects
-#[derive(Default, Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(
+	Default,
+	Debug,
+	Hash,
+	Eq,
+	PartialEq,
+	Ord,
+	PartialOrd,
+	Clone,
+	Copy,
+	serde::Serialize,
+	serde::Deserialize,
+)]
 pub enum InboundProtocol {
 	#[default]
 	TCP,
@@ -272,10 +315,16 @@ pub struct Service {
 
 impl Service {
 	pub fn port_is_http2(&self, port: u16) -> bool {
-		matches!(self.app_protocols.get(&port), Some(AppProtocol::Http2 | AppProtocol::Grpc))
+		matches!(
+			self.app_protocols.get(&port),
+			Some(AppProtocol::Http2 | AppProtocol::Grpc)
+		)
 	}
 	pub fn namespaced_hostname(&self) -> NamespacedHostname {
-		NamespacedHostname { namespace: self.namespace.clone(), hostname: self.hostname.clone() }
+		NamespacedHostname {
+			namespace: self.namespace.clone(),
+			hostname: self.hostname.clone(),
+		}
 	}
 }
 
