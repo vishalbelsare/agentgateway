@@ -17,16 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
+COPY . .
 COPY --from=node /app/out ./ui/out
-
-COPY Makefile Cargo.toml Cargo.lock build.rs ./
-COPY proto ./proto
-COPY src ./src
-COPY a2a-sdk ./a2a-sdk
-COPY common ./common
-
-RUN make build
+RUN --mount=type=cache,id=cargo,target=/usr/local/cargo/registry cargo fetch --locked
+RUN --mount=type=cache,id=cargo,target=/usr/local/cargo/registry make build
 
 RUN strip target/release/agentgateway
 
