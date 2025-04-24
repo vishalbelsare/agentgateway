@@ -1,5 +1,4 @@
 use std::env;
-use std::process::Command;
 
 // This build script is used to generate the rust source files that
 // we need for XDS GRPC communication.
@@ -47,35 +46,6 @@ fn main() -> Result<(), anyhow::Error> {
 				.map(|p| p.to_str().unwrap())
 				.collect::<Vec<_>>(),
 		)?;
-
-	// Adoppted from https://github.com/uutils/coreutils/blob/main/src/uu/stdbuf/build.rs
-	let profile_name = out_dir
-		.split(std::path::MAIN_SEPARATOR)
-		.nth_back(3)
-		.unwrap();
-
-	match Command::new("../../common/scripts/report_build_info.sh").output() {
-		Ok(output) => {
-			for line in String::from_utf8(output.stdout).unwrap().lines() {
-				// Each line looks like `agentgateway.dev.buildGitRevision=abc`
-				if let Some((key, value)) = line.split_once('=') {
-					#[allow(clippy::double_ended_iterator_last)]
-					let key = key.split('.').last().unwrap();
-					println!("cargo:rustc-env=MCPGW_BUILD_{key}={value}");
-				} else {
-					println!("cargo:warning=invalid build output {line}");
-				}
-			}
-		},
-		Err(err) => {
-			println!("cargo:warning={err}");
-		},
-	};
-	println!(
-		"cargo:rustc-env=MCPGW_BUILD_RUSTC_VERSION={}",
-		rustc_version::version().unwrap()
-	);
-	println!("cargo:rustc-env=MCPGW_BUILD_PROFILE_NAME={}", profile_name);
 
 	// This tells cargo to re-run this build script only when the proto files
 	// we're interested in change or the any of the proto directories were updated.

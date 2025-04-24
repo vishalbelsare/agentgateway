@@ -17,3 +17,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-core.workspace = true
+serde.workspace = true
+
+[build-dependencies]
+rustc_version.workspace = true
