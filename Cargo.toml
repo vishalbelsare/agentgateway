@@ -213,7 +213,7 @@ regex = { workspace = true }
 once_cell = { workspace = true }
 
 [build-dependencies]
-tonic-build = { workspace = true, features = ["prost"] }
+tonic-build = { workspace = true, features = ["prost", "transport"] }
 prost-build = { workspace = true }
 anyhow = { workspace = true }
 rustc_version = { workspace = true }
