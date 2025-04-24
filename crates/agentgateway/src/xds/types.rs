@@ -1,5 +1,5 @@
-use crate::strng;
-use crate::strng::Strng;
+use agent_core::strng;
+use agent_core::strng::Strng;
 
 // We don't control the codegen, so disable any code warnings in the
 // proto modules.

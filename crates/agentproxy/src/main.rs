@@ -14,9 +14,9 @@
 
 // For now, the entire package is not linked up to anything so squash the warnings
 #![allow(unused)]
-mod telemetry;
-mod config;
 mod app;
+mod config;
+mod telemetry;
 
 use agent_proxy::Config;
 extern crate core;
@@ -25,51 +25,51 @@ use std::sync::Arc;
 use tracing::info;
 
 fn main() -> anyhow::Result<()> {
-    let _log_flush = telemetry::setup_logging();
+	let _log_flush = telemetry::setup_logging();
 
-    // For now we don't need a complex CLI, so rather than pull in dependencies just use basic argv[1]
-    match std::env::args().nth(1).as_deref() {
-        None | Some("proxy") => (),
-        Some("version") => return version(),
-        Some("help") => return help(),
-        Some(unknown) => {
-            eprintln!("unknown command: {unknown}");
-            help().unwrap();
-            std::process::exit(1)
-        }
-    };
+	// For now we don't need a complex CLI, so rather than pull in dependencies just use basic argv[1]
+	match std::env::args().nth(1).as_deref() {
+		None | Some("proxy") => (),
+		Some("version") => return version(),
+		Some("help") => return help(),
+		Some(unknown) => {
+			eprintln!("unknown command: {unknown}");
+			help().unwrap();
+			std::process::exit(1)
+		},
+	};
 
-    tokio::runtime::Builder::new_current_thread()
-      .enable_all()
-      .build()
-      .unwrap()
-      .block_on(async move {
-          let config = Arc::new(config::parse_config()?);
-          proxy(config).await
-      })
+	tokio::runtime::Builder::new_current_thread()
+		.enable_all()
+		.build()
+		.unwrap()
+		.block_on(async move {
+			let config = Arc::new(config::parse_config()?);
+			proxy(config).await
+		})
 }
 
 fn help() -> anyhow::Result<()> {
-    // let version = version::BuildInfo::new();
-    let version = "todo";
-    println!(
-        "
+	// let version = version::BuildInfo::new();
+	let version = "todo";
+	println!(
+		"
 Istio Ztunnel ({version})
 
 Commands:
 proxy (default) - Start the ztunnel proxy
 version         - Print the version of ztunnel
 help            - Print commands and version of ztunnel"
-    );
-    Ok(())
+	);
+	Ok(())
 }
 
 fn version() -> anyhow::Result<()> {
-    todo!()
+	todo!()
 }
 
 async fn proxy(cfg: Arc<Config>) -> anyhow::Result<()> {
-    // info!("version: {}", version::BuildInfo::new());
-    info!("running with config: {}", serde_yaml::to_string(&cfg)?);
-    app::run(cfg).await
+	// info!("version: {}", version::BuildInfo::new());
+	info!("running with config: {}", serde_yaml::to_string(&cfg)?);
+	app::run(cfg).await
 }

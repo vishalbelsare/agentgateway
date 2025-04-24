@@ -18,7 +18,7 @@ use crate::proto::agentgateway::dev::listener::Listener as XdsListener;
 use crate::proto::agentgateway::dev::mcp::target::Target as McpXdsTarget;
 use crate::proto::agentgateway::dev::rbac::RuleSet as XdsRbac;
 use crate::rbac;
-use crate::strng::Strng;
+use agent_core::strng::Strng;
 use std::collections::HashMap;
 
 use crate::inbound;

@@ -13,6 +13,7 @@ aws = ["dep:aws-config", "dep:aws-sdk-lambda", "dep:aws-smithy-runtime-api"]
 ui = ["dep:include_dir", "dep:tower-serve-static"]
 
 [dependencies]
+agent-core.workspace = true
 a2a-sdk.workspace = true
 anyhow.workspace = true
 arcstr.workspace = true

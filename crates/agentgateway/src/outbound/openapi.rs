@@ -678,7 +678,7 @@ impl Handler {
 
 #[test]
 fn test_parse_openapi_schema() {
-	let schema = include_bytes!("../../../examples/openapi/openapi.json");
+	let schema = include_bytes!("../../../../examples/openapi/openapi.json");
 	let schema: OpenAPI = serde_json::from_slice(schema).unwrap();
 	let tools = parse_openapi_schema(&schema).unwrap();
 	assert_eq!(tools.len(), 19);
