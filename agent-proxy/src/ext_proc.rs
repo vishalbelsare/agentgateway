@@ -24,6 +24,7 @@ use proto::body_mutation::Mutation;
 use proto::processing_request::Request;
 use proto::processing_response::Response;
 
+// Very experimental support for ext_proc
 pub struct ExtProc {
 	tx_req: Sender<ProcessingRequest>,
 	rx_resp: Receiver<ProcessingResponse>,
@@ -31,21 +32,21 @@ pub struct ExtProc {
 
 impl ExtProc {
 	pub async fn new() -> anyhow::Result<ExtProc> {
-		error!("howardjohn: connecting...");
+		error!("ext_proc: connecting...");
 		let mut c =
 			proto::external_processor_client::ExternalProcessorClient::connect("http://127.0.0.1:9002")
 				.await?;
-		error!("howardjohn: connected");
+		error!("ext_proc: connected");
 		let (tx_req, rx_req) = tokio::sync::mpsc::channel(10);
 		let (tx_resp, rx_resp) = tokio::sync::mpsc::channel(10);
 		let req_stream = tokio_stream::wrappers::ReceiverStream::new(rx_req);
 		tokio::task::spawn(async move {
 			let resp = c.process(req_stream).await.unwrap();
-			error!("howardjohn: processed");
+			error!("ext_proc: processed");
 			let mut resp = resp.into_inner();
 			while let Some(item) = resp.message().await.unwrap() {
 				// Process responses here
-				error!("howardjohn: received response item");
+				error!("ext_proc: received response item");
 				tx_resp.send(item).await.unwrap();
 			}
 		});
@@ -53,24 +54,24 @@ impl ExtProc {
 	}
 
 	async fn send(&mut self, req: ProcessingRequest) -> ProcessingResponse {
-		error!("howardjohn: sending req...");
+		error!("ext_proc: sending req...");
 		self.tx_req.send(dbg!(req)).await.expect("TODO");
-		error!("howardjohn: sent req...");
+		error!("ext_proc: sent req...");
 		let resp = self.rx_resp.recv().await.expect("TODO");
-		error!("howardjohn: got res... {:#?}", resp);
+		error!("ext_proc: got res... {:#?}", resp);
 		resp
 	}
 
 	async fn recv(&mut self) -> ProcessingResponse {
 		let resp = self.rx_resp.recv().await.expect("TODO");
-		error!("howardjohn: got res... {:#?}", resp);
+		error!("ext_proc: got res... {:#?}", resp);
 		resp
 	}
 
 	async fn send2(&mut self, req: ProcessingRequest) {
-		error!("howardjohn: sending req...");
+		error!("ext_proc: sending req...");
 		self.tx_req.send(req).await.expect("TODO");
-		error!("howardjohn: sent req...");
+		error!("ext_proc: sent req...");
 	}
 
 	pub async fn request_headers(&mut self, req: &mut http::Request) -> http::Request {
@@ -88,7 +89,7 @@ impl ExtProc {
 
 		self.send2(preq).await;
 		if has_body {
-			error!("howardjohn: has body!");
+			error!("ext_proc: has body!");
 			let tx = self.tx_req.clone();
 			tokio::task::spawn(async move {
 				let mut stream = BodyStream::new(body);
@@ -108,7 +109,7 @@ impl ExtProc {
 					} else {
 						panic!("unknown type")
 					};
-					error!("howardjohn: sending body req...");
+					error!("ext_proc: sending body req...");
 					tx.send(preq).await.unwrap();
 				}
 				let preq = processing_request(Request::RequestBody(HttpBody {
@@ -116,7 +117,7 @@ impl ExtProc {
 					end_of_stream: true,
 				}));
 				tx.send(preq).await.unwrap();
-				error!("howardjohn: body done");
+				error!("ext_proc: body done");
 			});
 		}
 		let (mut tx_chunk, rx_chunk) = tokio::sync::mpsc::channel(1);
@@ -125,7 +126,7 @@ impl ExtProc {
 		loop {
 			let resp = self.recv().await;
 			if handle_response(&mut req, &mut tx_chunk, resp).await {
-				error!("howardjohn: complete!");
+				error!("ext_proc: complete!");
 				return req;
 			}
 		}
@@ -141,7 +142,7 @@ async fn handle_response(
 		Some(Response::RequestHeaders(HeadersResponse { response: Some(cr) })) => cr,
 		Some(Response::RequestBody(BodyResponse { response: Some(cr) })) => cr,
 		msg => {
-			error!("howardjohn: ignoring {msg:?}");
+			error!("ext_proc: ignoring {msg:?}");
 			return false;
 		},
 	};
@@ -178,7 +179,7 @@ async fn handle_response(
 			},
 		}
 	}
-	error!("howardjohn: still waiting for response...");
+	error!("ext_proc: still waiting for response...");
 	false
 }
 

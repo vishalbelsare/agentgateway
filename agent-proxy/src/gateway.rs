@@ -1,10 +1,7 @@
-// Copyright Solo.io, Inc
-//
-// Licensed under a Solo commercial license, not Apache License, Version 2 or any other variant
-
 use crate::ProxyInputs;
 use crate::ext_proc::ExtProc;
 use crate::http::{Authority, HeaderName, Request, Response, Scheme, StatusCode, Uri, filters};
+use crate::store::Event;
 use crate::stream::{Extension, Socket, TLSConnectionInfo, TcpConnectionInfo};
 use crate::types::agent;
 use crate::*;
@@ -87,11 +84,11 @@ impl Gateway {
 				},
 			};
 			if active.contains_key(&b.address) {
-				tracing::error!("howardjohn: bind already exists");
+				debug!("bind already exists");
 				return;
 			}
 
-			tracing::error!("howardjohn: add bind {}", b.address);
+			debug!("add bind {}", b.address);
 			let task = js.spawn(
 				Self::run_bind(
 					self.upstream.clone(),
@@ -112,7 +109,7 @@ impl Gateway {
 					handle_bind(&mut js, res.expect("TODO"));
 				}
 				Some(res) = js.join_next() => {
-					tracing::error!("howardjohn: bind complete {res:?}");
+					warn!("bind complete {res:?}");
 				}
 			}
 		}
@@ -908,7 +905,6 @@ mod revproxy {
 			let request_uri: hyper::Uri = create_forward_uri(forward_uri, &request);
 			*request.uri_mut() = request_uri.clone();
 
-			tracing::error!("howardjohn: call client... {:?}", request.version());
 			let client = if request.version() == http::Version::HTTP_2 {
 				h2_client
 			} else {

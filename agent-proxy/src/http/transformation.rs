@@ -43,7 +43,6 @@ impl Transformation {
 mod tests {
 	use crate::http::transformation::Transformation;
 	use http::HeaderName;
-	
 
 	fn build<const N: usize>(items: [(&str, &str); N]) -> Transformation {
 		let hm = items
@@ -61,8 +60,8 @@ mod tests {
 			.header("X-Custom-Foo", "Bar")
 			.body(())
 			.unwrap();
-		let xfm = build([("x-insert", r#"{{ "hello world" }}}"#)]);
+		let xfm = build([("x-insert", r#"{{ "hello world" }}"#)]);
 		xfm.apply(&mut req);
-		panic!("{req:?}")
+		assert_eq!(req.headers().get("x-insert").unwrap(), "hello world");
 	}
 }

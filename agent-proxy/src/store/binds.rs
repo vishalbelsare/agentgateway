@@ -1,6 +1,5 @@
-use crate::types::agent::{
-	Bind, BindName, Event, Listener, ListenerName, ListenerSet, Route, RouteName,
-};
+use crate::store::Event;
+use crate::types::agent::{Bind, BindName, Listener, ListenerName, ListenerSet, Route, RouteName};
 use crate::*;
 use futures_core::Stream;
 use std::collections::HashMap;
@@ -119,7 +118,7 @@ impl Store {
 			bind.listeners.insert(lis.name.clone(), lis);
 			self.insert_bind(bind);
 		} else {
-			tracing::error!("howardjohn: no bind found");
+			warn!("no bind found");
 		}
 	}
 	#[instrument(
@@ -134,7 +133,7 @@ impl Store {
 			.values()
 			.find_map(|l| l.listeners.get(&ln).map(|ls| (l, ls)))
 		else {
-			tracing::error!("howardjohn: no listener found");
+			warn!("no listener found");
 			return;
 		};
 		let mut bind = Arc::unwrap_or_clone(bind.clone());

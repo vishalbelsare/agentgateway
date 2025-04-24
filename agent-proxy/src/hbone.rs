@@ -114,7 +114,7 @@ impl tower::Service<Uri> for HBONEConnector {
 				if let Some(wl) = wl {
 					if wl.protocol == discovery::InboundProtocol::HBONE {
 						let dst = SocketAddr::from((socket, port));
-						tracing::error!("howardjohn: SHOULD HBONE");
+						tracing::debug!("will use HBONE");
 						let req = ::http::Request::builder()
 							.uri(format!("{dst}"))
 							.method(hyper::Method::CONNECT)
@@ -162,9 +162,9 @@ impl agent_hbone::pool::CertificateFetcher<WorkloadKey> for LocalWorkloadInforma
 pub struct LocalWorkloadInformation {}
 
 impl Default for LocalWorkloadInformation {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl LocalWorkloadInformation {
