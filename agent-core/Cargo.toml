@@ -8,11 +8,11 @@ rust-version = "1.85"
 path = "src/lib.rs"
 
 [dependencies]
-arcstr = { workspace = true }
-bytes = { workspace = true }
-pin-project-lite = { workspace = true }
-prometheus-client = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
-tracing = { workspace = true }
-tracing-core = { workspace = true }
+arcstr.workspace = true
+bytes.workspace = true
+pin-project-lite.workspace = true
+prometheus-client.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-core.workspace = true

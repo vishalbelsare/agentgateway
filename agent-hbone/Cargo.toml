@@ -7,32 +7,18 @@ rust-version = "1.85"
 [lib]
 path = "src/lib.rs"
 
-[build-dependencies]
-tonic-build = { workspace = true, features = ["prost", "transport"] }
-prost-build = { workspace = true }
-anyhow = { workspace = true }
-rustc_version = { workspace = true }
-
 [dependencies]
-anyhow = { workspace = true }
-prost = { workspace = true }
-prost-types = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true, features = ["sync", "tracing"] }
-tonic = { workspace = true }
-agent-core  = { workspace = true }
-prometheus-client = { workspace = true }
-async-stream = { workspace = true }
-tracing = { workspace = true }
-split-iter = { workspace = true }
-http = { workspace = true }
-bytes = { workspace = true }
-h2 = { workspace = true }
-futures = { workspace = true }
-futures-util = { workspace = true }
-pingora-pool = { workspace = true }
-flurry = { workspace = true }
-rustls = { workspace = true }
-tokio-rustls = { workspace = true }
+agent-core .workspace = true
+anyhow.workspace = true
+bytes.workspace = true
+flurry.workspace = true
+futures.workspace = true
+futures-util.workspace = true
+h2.workspace = true
+http.workspace = true
+pingora-pool.workspace = true
+rustls.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
+tonic.workspace = true
+tracing.workspace = true
