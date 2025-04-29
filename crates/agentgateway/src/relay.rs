@@ -116,9 +116,7 @@ impl ServerHandler for Relay {
                 logging: None,
                 prompts: Some(PromptsCapability::default()),
                 resources: Some(ResourcesCapability::default()),
-                tools: Some(ToolsCapability {
-                    list_changed: None,
-                }),
+                tools: Some(ToolsCapability::default()),
             },
             server_info: Implementation::from_build_env(),
             instructions: Some(
@@ -147,7 +145,7 @@ impl ServerHandler for Relay {
 				initialized.insert(name.clone());
 			}
 		}
-		Ok(InitializeResult::default())
+		Ok(self.get_info())
 	}
 
 	#[instrument(level = "debug", skip_all)]
