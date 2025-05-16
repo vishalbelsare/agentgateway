@@ -409,11 +409,6 @@ async fn mcp_post_handler(
 					tracing::error!("serving error: {:?}", e);
 				});
 
-			// if let Err(e) = result {
-			//   tracing::error!(error = ?e, "initialize error");
-			//   app.txs.write().await.remove(&session);
-			//   return;
-			// }
 			let state = app.state.read().await;
 			let mut rx: tokio::sync::broadcast::Receiver<String> = state.mcp_targets.subscribe();
 			drop(state);
