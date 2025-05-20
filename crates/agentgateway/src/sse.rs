@@ -127,6 +127,7 @@ impl IntoResponse for AuthError {
 				StatusCode::UNAUTHORIZED,
 				match e {
 					authn::AuthError::InvalidToken(e) => format!("Invalid token, error: {}", e),
+					authn::AuthError::NoValidKey(e) => format!("No valid key, error: {}", e),
 				},
 			),
 		};
