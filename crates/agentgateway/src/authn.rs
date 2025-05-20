@@ -203,7 +203,7 @@ pub async fn sync_jwks_loop(
 	}
 }
 
-// MutableKey is a wrapper around DecodingKey that allows us to update the key atomically
+// keys_from_jwks converts a JwkSet to a Vec of (Option<String>, DecodingKey)
 fn keys_from_jwks(jwks: &JwkSet) -> Result<Vec<(Option<String>, DecodingKey)>, JwkError> {
 	jwks
 		.keys
@@ -217,10 +217,12 @@ fn keys_from_jwks(jwks: &JwkSet) -> Result<Vec<(Option<String>, DecodingKey)>, J
 		.collect()
 }
 
+// KeySet is a collection of keys that can be updated atomically
 pub struct KeySet {
 	keys: Vec<(Option<String>, DecodingKey)>,
 }
 
+// KeySet is a collection of keys that can be updated atomically
 impl KeySet {
 	pub fn new(keys: Vec<(Option<String>, DecodingKey)>) -> Self {
 		Self { keys }
