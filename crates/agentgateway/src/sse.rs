@@ -127,6 +127,7 @@ impl IntoResponse for AuthError {
 				StatusCode::UNAUTHORIZED,
 				match e {
 					authn::AuthError::InvalidToken(e) => format!("Invalid token, error: {}", e),
+					authn::AuthError::NoValidKey(e) => format!("No valid key, error: {}", e),
 				},
 			),
 		};
@@ -313,7 +314,7 @@ async fn mcp_post_handler(
 
 	let tracing_context = trcng::extract_context_from_request(&headers);
 	let rbac_identity = rbac::Identity::new(claims, app.connection_id.read().await.clone());
-	let rq_ctx = Arc::new(relay::RqCtx::new(rbac_identity, tracing_context));
+	let rq_ctx = relay::RqCtx::new(rbac_identity, tracing_context);
 
 	match message {
 		ClientJsonRpcMessage::Request(ref mut req) => {

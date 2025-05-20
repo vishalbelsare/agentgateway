@@ -1,6 +1,6 @@
 use crate::proto::agentgateway::dev::common;
 use crate::proto::agentgateway::dev::listener::sse_listener::authn;
-use jsonwebtoken::jwk::Jwk;
+use jsonwebtoken::jwk::JwkSet;
 use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use secrecy::SecretString;
 use serde::Serialize;
@@ -14,12 +14,13 @@ use tokio_util::sync::CancellationToken;
 #[derive(Debug)]
 pub enum AuthError {
 	InvalidToken(jsonwebtoken::errors::Error),
+	NoValidKey(String),
 }
 
 #[derive(Clone, Serialize)]
 pub struct JwtAuthenticator {
 	#[serde(skip_serializing)]
-	key: Arc<RwLock<MutableKey>>,
+	key: Arc<RwLock<KeySet>>,
 	issuer: Option<HashSet<String>>,
 	audience: Option<HashSet<String>>,
 
@@ -80,31 +81,32 @@ impl JwksRemoteSource {
 		})
 	}
 
-	async fn fetch_jwks(&self) -> Result<Jwk, JwkError> {
+	async fn fetch_jwks(&self) -> Result<JwkSet, JwkError> {
 		let response = self
 			.client
 			.get(&self.url)
 			.send()
 			.await
 			.map_err(JwkError::JwksFetchError)?;
-		let jwk: Jwk = serde_json::from_str(&response.text().await.map_err(JwkError::JwksFetchError)?)
-			.map_err(JwkError::JwksParseError)?;
-		Ok(jwk)
+		let jwks: JwkSet =
+			serde_json::from_str(&response.text().await.map_err(JwkError::JwksFetchError)?)
+				.map_err(JwkError::JwksParseError)?;
+		Ok(jwks)
 	}
 }
 
 impl JwtAuthenticator {
 	pub async fn new(value: &authn::JwtConfig) -> Result<Self, JwkError> {
-		let (jwk, remote): (Jwk, Option<JwksRemoteSource>) = match &value.jwks {
+		let (jwks, remote): (JwkSet, Option<JwksRemoteSource>) = match &value.jwks {
 			Some(authn::jwt_config::Jwks::LocalJwks(local)) => match &local.source {
-				Some(common::local_data_source::Source::Inline(jwk)) => {
-					let jwk: Jwk = serde_json::from_slice(jwk).map_err(JwkError::JwksParseError)?;
-					(jwk, None)
+				Some(common::local_data_source::Source::Inline(jwks)) => {
+					let jwks: JwkSet = serde_json::from_slice(jwks).map_err(JwkError::JwksParseError)?;
+					(jwks, None)
 				},
 				Some(common::local_data_source::Source::FilePath(path)) => {
 					let file = std::fs::File::open(path).map_err(JwkError::JwksFileError)?;
-					let jwk: Jwk = serde_json::from_reader(file).map_err(JwkError::JwksParseError)?;
-					(jwk, None)
+					let jwks: JwkSet = serde_json::from_reader(file).map_err(JwkError::JwksParseError)?;
+					(jwks, None)
 				},
 				_ => {
 					return Err(JwkError::InvalidConfig(
@@ -114,16 +116,18 @@ impl JwtAuthenticator {
 			},
 			Some(authn::jwt_config::Jwks::RemoteJwks(remote)) => {
 				let remote = JwksRemoteSource::from_xds(remote)?;
-				let jwk = remote.fetch_jwks().await?;
-				(jwk, Some(remote.clone()))
+				let jwks = remote.fetch_jwks().await?;
+				(jwks, Some(remote.clone()))
 			},
 			_ => {
 				return Err(JwkError::InvalidConfig("no JWKS provided".to_string()));
 			},
 		};
-		if !jwk.is_supported() {
-			tracing::error!("unsupported algorithm");
-			return Err(JwkError::UnsupportedAlgorithm);
+		for jwk in jwks.keys.iter() {
+			if !jwk.is_supported() {
+				tracing::error!("unsupported algorithm");
+				return Err(JwkError::UnsupportedAlgorithm);
+			}
 		}
 		let issuer = match value.issuer.len() {
 			0 => None,
@@ -138,11 +142,7 @@ impl JwtAuthenticator {
 			)),
 		};
 		Ok(JwtAuthenticator {
-			key: Arc::new(RwLock::new(
-				DecodingKey::from_jwk(&jwk)
-					.map_err(JwkError::InvalidJWK)?
-					.into(),
-			)),
+			key: Arc::new(RwLock::new(KeySet::new(keys_from_jwks(&jwks)?))),
 			issuer,
 			audience,
 			remote,
@@ -153,11 +153,8 @@ impl JwtAuthenticator {
 		match &self.remote {
 			Some(remote) => {
 				let jwk = remote.fetch_jwks().await?;
-				self
-					.key
-					.write()
-					.await
-					.update(DecodingKey::from_jwk(&jwk).map_err(JwkError::InvalidJWK)?);
+				let keys = keys_from_jwks(&jwk)?;
+				self.key.write().await.update(keys);
 				Ok(())
 			},
 			None => Ok(()),
@@ -206,24 +203,39 @@ pub async fn sync_jwks_loop(
 	}
 }
 
-// MutableKey is a wrapper around DecodingKey that allows us to update the key atomically
-pub struct MutableKey {
-	key: DecodingKey,
+// keys_from_jwks converts a JwkSet to a Vec of (Option<String>, DecodingKey)
+fn keys_from_jwks(jwks: &JwkSet) -> Result<Vec<(Option<String>, DecodingKey)>, JwkError> {
+	jwks
+		.keys
+		.iter()
+		.map(|jwk| -> Result<(Option<String>, DecodingKey), JwkError> {
+			Ok((
+				jwk.common.key_id.clone(),
+				DecodingKey::from_jwk(jwk).map_err(JwkError::InvalidJWK)?,
+			))
+		})
+		.collect()
 }
 
-impl MutableKey {
-	pub fn new(key: DecodingKey) -> Self {
-		Self { key }
+// KeySet is a collection of keys that can be updated atomically
+pub struct KeySet {
+	keys: Vec<(Option<String>, DecodingKey)>,
+}
+
+// KeySet is a collection of keys that can be updated atomically
+impl KeySet {
+	pub fn new(keys: Vec<(Option<String>, DecodingKey)>) -> Self {
+		Self { keys }
 	}
 
-	pub fn update(&mut self, key: DecodingKey) {
-		self.key = key;
+	pub fn update(&mut self, key: Vec<(Option<String>, DecodingKey)>) {
+		self.keys = key;
 	}
 }
 
-impl From<DecodingKey> for MutableKey {
-	fn from(key: DecodingKey) -> Self {
-		Self::new(key)
+impl From<Vec<(Option<String>, DecodingKey)>> for KeySet {
+	fn from(keys: Vec<(Option<String>, DecodingKey)>) -> Self {
+		Self::new(keys)
 	}
 }
 
@@ -238,9 +250,33 @@ impl JwtAuthenticator {
 			validation
 		};
 
-		let key = self.key.read().await;
-		let token_data = decode::<Map<String, Value>>(token, &key.key, &validation)
-			.map_err(AuthError::InvalidToken)?;
+		let key_set = self.key.read().await;
+		let key = match (header.kid, key_set.keys.len()) {
+			// If there is a kid, find the key that matches the kid
+			(Some(kid), _) => key_set
+				.keys
+				.iter()
+				.find(|(id, _)| match (id, &kid) {
+					(Some(id), kid) => id == kid,
+					_ => false,
+				})
+				.ok_or(AuthError::NoValidKey("no key matching kid".to_string()))?,
+			// If there is no kid, and there is only one key, use the first key
+			(None, 1) => {
+				// Use the first key if no kid is present
+				key_set
+					.keys
+					.first()
+					.ok_or(AuthError::NoValidKey("no key found".to_string()))?
+			},
+			// If there is no kid, and there is more than one key, return an error
+			(None, _) => {
+				return Err(AuthError::NoValidKey("no key found".to_string()));
+			},
+		};
+
+		let token_data =
+			decode::<Map<String, Value>>(token, &key.1, &validation).map_err(AuthError::InvalidToken)?;
 		Ok(crate::rbac::Claims::new(
 			token_data.claims,
 			SecretString::new(token.into()),
