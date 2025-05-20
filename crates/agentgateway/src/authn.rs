@@ -249,8 +249,9 @@ impl JwtAuthenticator {
 		};
 
 		let key_set = self.key.read().await;
-		let key = match header.kid {
-			Some(kid) => key_set
+		let key = match (header.kid, key_set.keys.len()) {
+			// If there is a kid, find the key that matches the kid
+			(Some(kid), _) => key_set
 				.keys
 				.iter()
 				.find(|(id, _)| match (id, &kid) {
@@ -258,12 +259,17 @@ impl JwtAuthenticator {
 					_ => false,
 				})
 				.ok_or(AuthError::NoValidKey("no key matching kid".to_string()))?,
-			None => {
+			// If there is no kid, and there is only one key, use the first key
+			(None, 1) => {
 				// Use the first key if no kid is present
 				key_set
 					.keys
 					.first()
 					.ok_or(AuthError::NoValidKey("no key found".to_string()))?
+			},
+			// If there is no kid, and there is more than one key, return an error
+			(None, _) => {
+				return Err(AuthError::NoValidKey("no key found".to_string()));
 			},
 		};
 
