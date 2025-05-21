@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tokio::task::JoinSet;
 use tracing_subscriber::{self, EnvFilter};
 
+use agent_core::version;
 use agentgateway::admin;
 use agentgateway::mtrcs;
 use agentgateway::proto::agentgateway::dev::a2a::target::Target as XdsA2ATarget;
@@ -20,8 +21,17 @@ use agentgateway::xds;
 use agentgateway::xds::ProxyStateUpdater;
 use agentgateway::xds::XdsStore as ProxyState;
 use agentgateway::{a2a, inbound};
+
+lazy_static::lazy_static! {
+		// The memory is intentionally leaked here using Box::leak to achieve a 'static lifetime
+		// for the version string. This is necessary because the version string is used in a
+		// context that requires a 'static lifetime.
+	static ref LONG_VERSION: &'static str = Box::leak(version::BuildInfo::new().to_string().into_boxed_str());
+}
+
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(about, long_about = None)]
+#[command(version = *LONG_VERSION, long_version = *LONG_VERSION)]
 struct Args {
 	/// Use config from bytes
 	#[arg(short, long, value_name = "config")]
