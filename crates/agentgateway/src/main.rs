@@ -23,9 +23,9 @@ use agentgateway::xds::XdsStore as ProxyState;
 use agentgateway::{a2a, inbound};
 
 lazy_static::lazy_static! {
-    // The memory is intentionally leaked here using Box::leak to achieve a 'static lifetime
-    // for the version string. This is necessary because the version string is used in a
-    // context that requires a 'static lifetime.
+		// The memory is intentionally leaked here using Box::leak to achieve a 'static lifetime
+		// for the version string. This is necessary because the version string is used in a
+		// context that requires a 'static lifetime.
 	static ref LONG_VERSION: &'static str = Box::leak(version::BuildInfo::new().to_string().into_boxed_str());
 }
 
