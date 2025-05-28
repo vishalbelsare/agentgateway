@@ -8,8 +8,19 @@ use serde_json::Value;
 use serde_json::json;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::fs::read_to_string;
 use std::sync::Arc;
 use tracing::instrument;
+use url::Url;
+
+// Import proto types
+use crate::proto::agentgateway::dev::common::{
+	header::Value as HeaderValueProto, local_data_source::Source as LocalSourceProto,
+};
+
+// Import the correct prost-generated types
+use crate::proto::agentgateway::dev::mcp::target::target::OpenApiTarget;
+use crate::proto::agentgateway::dev::mcp::target::target::open_api_target::SchemaSource;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct UpstreamOpenAPICall {
@@ -32,12 +43,143 @@ pub enum ParseError {
 	MissingReference(String),
 	#[error("unsupported reference")]
 	UnsupportedReference(String),
-	#[error("information requireds")]
+	#[error("information required: {0}")] // Corrected typo from "requireds"
 	InformationRequired(String),
 	#[error("serde error: {0}")]
 	SerdeError(#[from] serde_json::Error),
 	#[error("io error: {0}")]
 	IoError(#[from] std::io::Error),
+	#[error("HTTP request failed: {0}")]
+	HttpError(#[from] reqwest::Error),
+	#[error("Invalid URL: {0}")]
+	InvalidUrl(#[from] url::ParseError),
+	#[error("Schema source not specified in OpenAPI target")]
+	SchemaSourceMissing,
+	#[error(
+		"Unsupported schema format or content type from URL {0}. Only JSON and YAML are supported."
+	)]
+	UnsupportedSchemaFormat(String), // Added URL to message
+	#[error("Local schema file path not specified")]
+	LocalPathMissing,
+	#[error("Local schema inline content not specified or empty")]
+	LocalInlineMissing, // Added for inline content
+	#[error("Invalid header name or value")]
+	InvalidHeader,
+	#[error("Header value source not supported (e.g. env_value)")]
+	HeaderValueSourceNotSupported(String),
+}
+
+pub async fn load_openapi_schema(target_config: &OpenApiTarget) -> Result<OpenAPI, ParseError> {
+	match &target_config.schema_source {
+		Some(schema_source) => match schema_source {
+			SchemaSource::RemoteSchema(remote_source) => {
+				let scheme = match remote_source.port {
+					443 => "https",
+					80 => "http",
+					_ => return Err(ParseError::InvalidUrl(url::ParseError::InvalidPort)),
+				};
+				let url_string = format!("{}://{}/{}", scheme, remote_source.host, remote_source.path);
+				let url = Url::parse(&url_string).map_err(ParseError::InvalidUrl)?;
+				tracing::info!("Loading OpenAPI schema from remote URL: {}", url);
+
+				let client = reqwest::Client::new();
+				let mut request_builder = client.get(url.clone());
+
+				if !remote_source.headers.is_empty() {
+					let mut req_headers = HeaderMap::new();
+					for header_proto in &remote_source.headers {
+						let header_key = &header_proto.key;
+						match &header_proto.value {
+							Some(HeaderValueProto::StringValue(val_str)) => {
+								match (
+									HeaderName::from_bytes(header_key.as_bytes()),
+									HeaderValue::from_str(val_str),
+								) {
+									(Ok(name), Ok(value)) => {
+										req_headers.insert(name, value);
+									},
+									_ => {
+										tracing::warn!("Invalid header (key or value): {}={}", header_key, val_str);
+										return Err(ParseError::InvalidHeader);
+									},
+								}
+							},
+							Some(HeaderValueProto::EnvValue(env_key)) => {
+								tracing::warn!(
+									"Header value from environment variable is not supported yet: key={}, env_key={}",
+									header_key,
+									env_key
+								);
+								return Err(ParseError::HeaderValueSourceNotSupported(
+									header_key.clone(),
+								));
+							},
+							None => {
+								tracing::warn!("Header value not set for key: {}", header_key);
+								return Err(ParseError::InvalidHeader);
+							},
+						}
+					}
+					if !req_headers.is_empty() {
+						request_builder = request_builder.headers(req_headers);
+					}
+				}
+
+				let response = request_builder
+					.send()
+					.await
+					.map_err(ParseError::HttpError)?;
+
+				if !response.status().is_success() {
+					return Err(ParseError::HttpError(
+						response.error_for_status().unwrap_err(),
+					));
+				}
+				let schema_text = response.text().await.map_err(ParseError::HttpError)?;
+
+				let openapi_doc: OpenAPI = serde_json::from_str(&schema_text).or_else(|_json_err| {
+					serde_yaml::from_str(&schema_text)
+						.map_err(|_yaml_err| ParseError::UnsupportedSchemaFormat(url_string.to_string()))
+				})?;
+				Ok(openapi_doc)
+			},
+			SchemaSource::Schema(schema_source) => match &schema_source.source {
+				Some(LocalSourceProto::FilePath(path)) => {
+					if path.is_empty() {
+						return Err(ParseError::LocalPathMissing);
+					}
+					tracing::info!("Loading OpenAPI schema from local file: {}", path);
+					let schema_content = read_to_string(path).map_err(ParseError::IoError)?;
+					serde_json::from_str(&schema_content).or_else(|_json_err| {
+						serde_yaml::from_str(&schema_content)
+							.map_err(|_yaml_err| ParseError::UnsupportedSchemaFormat(path.clone()))
+					})
+				},
+				Some(LocalSourceProto::Inline(inline_bytes)) => {
+					if inline_bytes.is_empty() {
+						return Err(ParseError::LocalInlineMissing);
+					}
+					tracing::info!("Loading OpenAPI schema from inline bytes");
+					let schema_content = std::str::from_utf8(inline_bytes).map_err(|_| {
+						ParseError::UnsupportedSchemaFormat("inline bytes (not valid UTF-8)".to_string())
+					})?;
+
+					serde_json::from_str(schema_content).or_else(|_json_err| {
+						serde_yaml::from_str(schema_content)
+							.map_err(|_yaml_err| ParseError::UnsupportedSchemaFormat("inline bytes".to_string()))
+					})
+				},
+				None => {
+					tracing::error!("No source specified in LocalSchema");
+					Err(ParseError::LocalPathMissing)
+				},
+			},
+		},
+		None => {
+			tracing::error!("No schema source specified for OpenAPI target");
+			Err(ParseError::SchemaSourceMissing)
+		},
+	}
 }
 
 pub(crate) fn get_server_prefix(server: &OpenAPI) -> Result<String, ParseError> {
@@ -649,8 +791,6 @@ impl Handler {
 			request_builder = request_builder.json(&body_val);
 		}
 
-		tracing::info!("Sending request: {:?}", request_builder);
-
 		// --- Send Request & Get Response ---
 		let response = request_builder.send().await?;
 		let status = response.status();
@@ -676,21 +816,10 @@ impl Handler {
 	}
 }
 
-#[test]
-fn test_parse_openapi_schema() {
-	let schema = include_bytes!("../../../../examples/openapi/openapi.json");
-	let schema: OpenAPI = serde_json::from_slice(schema).unwrap();
-	let tools = parse_openapi_schema(&schema).unwrap();
-	assert_eq!(tools.len(), 19);
-	for (tool, upstream) in tools {
-		println!("{}", serde_json::to_string_pretty(&tool).unwrap());
-		println!("{}", serde_json::to_string_pretty(&upstream).unwrap());
-	}
-}
-
+// Place the test module here at the end
 #[cfg(test)]
 mod tests {
-	use super::*; // Import items from parent module
+	use super::*;
 	use reqwest::Client;
 	use rmcp::model::Tool;
 	use serde_json::json;

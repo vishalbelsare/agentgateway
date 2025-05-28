@@ -70,6 +70,7 @@ tower-http.workspace = true
 tower-serve-static = { workspace = true, optional = true }
 tracing.workspace = true
 tracing-subscriber.workspace = true
+url.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true
