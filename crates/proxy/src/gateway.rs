@@ -1377,6 +1377,9 @@ impl HTTPProxy {
 				return Err(ProxyError::RequestTimeout);
 			},
 		};
+		if false {
+			// do PII here
+		}
 		apply_response_filters(selected_route.filters.as_slice(), &mut resp);
 		apply_response_filters(selected_backend.filters.as_slice(), &mut resp);
 		let resp = body_timeout.apply(resp);

@@ -49,6 +49,7 @@ regex.workspace = true
 serde_regex.workspace = true
 hex.workspace = true
 minijinja.workspace = true
+phonenumber = "0.3.7"
 
 [build-dependencies]
 tonic-build.workspace = true

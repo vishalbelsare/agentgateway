@@ -17,6 +17,7 @@ pub mod stream;
 pub mod transport;
 pub mod types;
 pub mod util;
+mod pii;
 
 use serde::Serializer;
 

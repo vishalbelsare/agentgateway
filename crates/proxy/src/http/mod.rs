@@ -1,5 +1,6 @@
 pub mod filters;
 pub mod timeout;
+pub mod pii;
 
 // WIP so disable warnings
 #[allow(dead_code)]
