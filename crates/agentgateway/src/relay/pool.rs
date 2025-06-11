@@ -259,13 +259,8 @@ impl ConnectionPool {
 				let (final_scheme, final_host, final_port, final_prefix, builder) =
 					if server_info.scheme.is_some() {
 						// Full URL provided in OpenAPI server - use that completely
-						let scheme = server_info.scheme.unwrap();
 						let host = server_info.host.unwrap();
-						let port = server_info.port.unwrap_or(match scheme.as_str() {
-							"https" => 443,
-							"http" => 80,
-							_ => openapi_target_spec_from_outbound.port, // fallback to config
-						});
+						let port = server_info.port; // ServerInfo always provides port
 
 						// Configure TLS for the full URL's port and scheme
 						let builder = reqwest::Client::builder();
