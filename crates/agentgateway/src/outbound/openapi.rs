@@ -182,15 +182,63 @@ pub async fn load_openapi_schema(target_config: &OpenApiTarget) -> Result<OpenAP
 	}
 }
 
-pub(crate) fn get_server_prefix(server: &OpenAPI) -> Result<String, ParseError> {
-	match server.servers.len() {
-		0 => Ok("/".to_string()),
-		1 => Ok(server.servers[0].url.clone()),
-		_ => Err(ParseError::UnsupportedReference(format!(
-			"multiple servers are not supported: {:?}",
-			server.servers
-		))),
+#[derive(Debug)]
+pub struct ServerInfo {
+	pub scheme: Option<String>,
+	pub host: Option<String>,
+	pub port: u32,
+	pub path_prefix: String,
+}
+
+pub(crate) fn get_server_info(openapi_doc: &OpenAPI) -> Result<ServerInfo, ParseError> {
+	let server_url = match openapi_doc.servers.len() {
+		0 => "/".to_string(),
+		1 => openapi_doc.servers[0].url.clone(),
+		_ => {
+			return Err(ParseError::UnsupportedReference(format!(
+				"multiple servers are not supported: {:?}",
+				openapi_doc.servers
+			)));
+		},
+	};
+
+	// Try to parse as a full URL
+	if let Ok(parsed_url) = Url::parse(&server_url) {
+		if !parsed_url.scheme().is_empty() && parsed_url.host().is_some() {
+			// It's a full URL - extract all components
+			let path_prefix = parsed_url.path();
+			let path_prefix = if path_prefix.is_empty() {
+				"/".to_string()
+			} else {
+				path_prefix.to_string()
+			};
+
+			let scheme = parsed_url.scheme();
+			let port = parsed_url.port().map(|p| p as u32).unwrap_or_else(|| {
+				// Default to standard ports when not explicitly specified
+				match scheme {
+					"https" => 443,
+					"http" => 80,
+					_ => 80, // Default fallback to 80 for unknown schemes
+				}
+			});
+
+			return Ok(ServerInfo {
+				scheme: Some(scheme.to_string()),
+				host: Some(parsed_url.host().unwrap().to_string()),
+				port,
+				path_prefix,
+			});
+		}
 	}
+
+	// It's just a path prefix - provide default values for missing components
+	Ok(ServerInfo {
+		scheme: None,
+		host: None,
+		port: 80, // Default port for path-only configurations
+		path_prefix: server_url,
+	})
 }
 
 fn resolve_schema<'a>(
@@ -827,6 +875,154 @@ mod tests {
 	use std::sync::Arc;
 	use wiremock::matchers::{body_json, header, method, path, query_param};
 	use wiremock::{Mock, MockServer, ResponseTemplate};
+
+	#[test]
+	fn test_get_server_info_full_url() {
+		let openapi_doc = OpenAPI {
+			openapi: "3.0.0".to_string(),
+			info: openapiv3::Info {
+				title: "Test API".to_string(),
+				version: "1.0.0".to_string(),
+				..Default::default()
+			},
+			servers: vec![openapiv3::Server {
+				url: "https://cloud.myapp.com/identity_".to_string(),
+				description: None,
+				variables: Default::default(),
+				extensions: Default::default(),
+			}],
+			paths: Default::default(),
+			components: None,
+			security: None,
+			tags: vec![],
+			external_docs: None,
+			extensions: Default::default(),
+		};
+
+		let server_info = get_server_info(&openapi_doc).unwrap();
+		assert_eq!(server_info.scheme, Some("https".to_string()));
+		assert_eq!(server_info.host, Some("cloud.myapp.com".to_string()));
+		assert_eq!(server_info.port, 443); // Should default to 443 for https when no explicit port
+		assert_eq!(server_info.path_prefix, "/identity_");
+	}
+
+	#[test]
+	fn test_get_server_info_path_prefix_only() {
+		let openapi_doc = OpenAPI {
+			openapi: "3.0.0".to_string(),
+			info: openapiv3::Info {
+				title: "Test API".to_string(),
+				version: "1.0.0".to_string(),
+				..Default::default()
+			},
+			servers: vec![openapiv3::Server {
+				url: "/api/v3".to_string(),
+				description: None,
+				variables: Default::default(),
+				extensions: Default::default(),
+			}],
+			paths: Default::default(),
+			components: None,
+			security: None,
+			tags: vec![],
+			external_docs: None,
+			extensions: Default::default(),
+		};
+
+		let server_info = get_server_info(&openapi_doc).unwrap();
+		assert_eq!(server_info.scheme, None);
+		assert_eq!(server_info.host, None);
+		assert_eq!(server_info.port, 80); // Default port for path-only configurations
+		assert_eq!(server_info.path_prefix, "/api/v3");
+	}
+
+	#[test]
+	fn test_get_server_info_full_url_with_port() {
+		let openapi_doc = OpenAPI {
+			openapi: "3.0.0".to_string(),
+			info: openapiv3::Info {
+				title: "Test API".to_string(),
+				version: "1.0.0".to_string(),
+				..Default::default()
+			},
+			servers: vec![openapiv3::Server {
+				url: "http://api.example.com:8080/v1".to_string(),
+				description: None,
+				variables: Default::default(),
+				extensions: Default::default(),
+			}],
+			paths: Default::default(),
+			components: None,
+			security: None,
+			tags: vec![],
+			external_docs: None,
+			extensions: Default::default(),
+		};
+
+		let server_info = get_server_info(&openapi_doc).unwrap();
+		assert_eq!(server_info.scheme, Some("http".to_string()));
+		assert_eq!(server_info.host, Some("api.example.com".to_string()));
+		assert_eq!(server_info.port, 8080);
+		assert_eq!(server_info.path_prefix, "/v1");
+	}
+
+	#[test]
+	fn test_get_server_info_no_servers() {
+		let openapi_doc = OpenAPI {
+			openapi: "3.0.0".to_string(),
+			info: openapiv3::Info {
+				title: "Test API".to_string(),
+				version: "1.0.0".to_string(),
+				..Default::default()
+			},
+			servers: vec![],
+			paths: Default::default(),
+			components: None,
+			security: None,
+			tags: vec![],
+			external_docs: None,
+			extensions: Default::default(),
+		};
+
+		let server_info = get_server_info(&openapi_doc).unwrap();
+		assert_eq!(server_info.scheme, None);
+		assert_eq!(server_info.host, None);
+		assert_eq!(server_info.port, 80); // Default port when no servers defined
+		assert_eq!(server_info.path_prefix, "/");
+	}
+
+	#[test]
+	fn test_get_server_info_full_url_no_path() {
+		let openapi_doc = OpenAPI {
+			openapi: "3.0.0".to_string(),
+			info: openapiv3::Info {
+				title: "Test API".to_string(),
+				version: "1.0.0".to_string(),
+				..Default::default()
+			},
+			servers: vec![openapiv3::Server {
+				url: "http://api-service.example.systems".to_string(),
+				description: None,
+				variables: Default::default(),
+				extensions: Default::default(),
+			}],
+			paths: Default::default(),
+			components: None,
+			security: None,
+			tags: vec![],
+			external_docs: None,
+			extensions: Default::default(),
+		};
+
+		let server_info = get_server_info(&openapi_doc).unwrap();
+		assert_eq!(server_info.scheme, Some("http".to_string()));
+		assert_eq!(
+			server_info.host,
+			Some("api-service.example.systems".to_string())
+		);
+		assert_eq!(server_info.port, 80); // Should default to 80 for http when no explicit port
+		assert_eq!(server_info.path_prefix, "/"); // Should default to "/" when no path is specified
+	}
 
 	// Helper to create a handler and mock server for tests
 	async fn setup() -> (MockServer, Handler) {

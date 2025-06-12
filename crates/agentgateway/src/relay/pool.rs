@@ -237,7 +237,7 @@ impl ConnectionPool {
 							)
 						})?;
 
-				// 4. Parse Tools and Prefix
+				// 4. Parse Tools and Server Info
 				let tools =
 					crate::outbound::openapi::parse_openapi_schema(&loaded_openapi_doc).map_err(|e| {
 						anyhow::anyhow!(
@@ -246,24 +246,54 @@ impl ConnectionPool {
 							e
 						)
 					})?;
-				let prefix =
-					crate::outbound::openapi::get_server_prefix(&loaded_openapi_doc).map_err(|e| {
+				let server_info =
+					crate::outbound::openapi::get_server_info(&loaded_openapi_doc).map_err(|e| {
 						anyhow::anyhow!(
-							"Failed to get server prefix from OpenAPI schema for target {}: {}",
+							"Failed to get server info from OpenAPI schema for target {}: {}",
 							target.name,
 							e
 						)
 					})?;
 
-				// 5. Construct openapi::Handler (client setup)
-				let builder = reqwest::Client::builder();
-				let (scheme, builder) = tls_cfg(
-					builder,
-					&openapi_target_spec_from_outbound.tls,
-					openapi_target_spec_from_outbound.port,
-				)
-				.await?;
+				// 5. Determine final server configuration and build client
+				let (final_scheme, final_host, final_port, final_prefix, builder) =
+					if server_info.scheme.is_some() {
+						// Full URL provided in OpenAPI server - use that completely
+						let host = server_info.host.unwrap();
+						let port = server_info.port; // ServerInfo always provides port
 
+						// Configure TLS for the full URL's port and scheme
+						let builder = reqwest::Client::builder();
+						let (verified_scheme, configured_builder) =
+							tls_cfg(builder, &openapi_target_spec_from_outbound.tls, port).await?;
+
+						// Use the verified scheme from tls_cfg (should match our parsed scheme)
+						(
+							verified_scheme,
+							host,
+							port,
+							server_info.path_prefix,
+							configured_builder,
+						)
+					} else {
+						// Just a path prefix - use config for scheme/host/port
+						let builder = reqwest::Client::builder();
+						let (scheme, configured_builder) = tls_cfg(
+							builder,
+							&openapi_target_spec_from_outbound.tls,
+							openapi_target_spec_from_outbound.port,
+						)
+						.await?;
+						(
+							scheme,
+							openapi_target_spec_from_outbound.host.clone(),
+							openapi_target_spec_from_outbound.port,
+							server_info.path_prefix,
+							configured_builder,
+						)
+					};
+
+				// 6. Add headers and build final client
 				let mut api_headers =
 					get_default_headers(&openapi_target_spec_from_outbound.backend_auth, rq_ctx).await?;
 				for (key, value) in &openapi_target_spec_from_outbound.headers {
@@ -277,12 +307,12 @@ impl ConnectionPool {
 				upstream::UpstreamTarget {
 					filters: target.filters.clone(), // From the outer 'target' variable
 					spec: upstream::UpstreamTargetSpec::OpenAPI(crate::outbound::openapi::Handler {
-						host: openapi_target_spec_from_outbound.host.clone(),
+						host: final_host,
 						client: final_client,
 						tools, // From parse_openapi_schema
-						scheme: scheme.to_string(),
-						prefix, // From get_server_prefix
-						port: openapi_target_spec_from_outbound.port,
+						scheme: final_scheme,
+						prefix: final_prefix,
+						port: final_port,
 					}),
 				}
 			},
