@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../../schema/local.json
+binds:
+- port: 3000
+  listeners:
+  - routes:
+    - backends:
+      - mcp:
+          name: default
+          targets:
+          - name: openapi
+            openapi:
+              schema:
+                file: ./examples/openapi/openapi.json
+              host: localhost
+              port: 8080
