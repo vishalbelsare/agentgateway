@@ -621,7 +621,7 @@ impl serde::Serialize for RouteSet {
 	where
 		S: Serializer,
 	{
-		self.all.serialize(serializer)
+		self.inner.serialize(serializer)
 	}
 }
 
@@ -654,7 +654,7 @@ impl RouteSet {
 					let have = self.all.get(&existing.key).expect("corrupted state");
 					let have_match = have.matches.get(existing.index).expect("corrupted state");
 
-					cmp::Ordering::reverse(Self::compare_route(m, have_match))
+					cmp::Ordering::reverse(Self::compare_route((m, &r.key), (have_match, &existing.key)))
 				});
 				// TODO: replace old route
 				let insert_idx = to_insert.unwrap_or_else(|pos| pos);
@@ -669,7 +669,9 @@ impl RouteSet {
 		}
 	}
 
-	fn compare_route(a: &RouteMatch, b: &RouteMatch) -> Ordering {
+	fn compare_route(a: (&RouteMatch, &RouteKey), b: (&RouteMatch, &RouteKey)) -> Ordering {
+		let (a, a_key) = a;
+		let (b, b_key) = b;
 		// Compare RouteMatch according to Gateway API sorting requirements
 		// 1. Path match type (Exact > PathPrefix > Regex)
 		let path_rank1 = get_path_rank(&a.path);
@@ -698,7 +700,11 @@ impl RouteSet {
 		// 5. Number of query matches (more query params first)
 		let query_count1 = a.query.len();
 		let query_count2 = b.query.len();
-		cmp::Ordering::reverse(query_count1.cmp(&query_count2))
+		if query_count1 != query_count2 {
+			return cmp::Ordering::reverse(query_count1.cmp(&query_count2));
+		}
+		// Finally, by order in the route list. This is the tie-breaker
+		a_key.cmp(b_key)
 	}
 
 	pub fn contains(&self, key: &RouteKey) -> bool {

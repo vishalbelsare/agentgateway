@@ -59,8 +59,8 @@ export function ServerProvider({ children }: { children: React.ReactNode }) {
 
       // Combine targets
       const targetsArray = [
-        ...mcpTargetsData.map((target) => ({ ...target, type: "mcp" as const })),
-        ...a2aTargetsData.map((target) => ({ ...target, type: "a2a" as const })),
+        // ...mcpTargetsData.map((target) => ({ ...target, type: "mcp" as const })),
+        // ...a2aTargetsData.map((target) => ({ ...target, type: "a2a" as const })),
       ];
       setTargets(targetsArray);
 
@@ -90,8 +90,8 @@ export function ServerProvider({ children }: { children: React.ReactNode }) {
 
         // Combine targets
         const targetsArray = [
-          ...mcpTargetsData.map((target) => ({ ...target, type: "mcp" as const })),
-          ...a2aTargetsData.map((target) => ({ ...target, type: "a2a" as const })),
+          // ...mcpTargetsData.map((target) => ({ ...target, type: "mcp" as const })),
+          // ...a2aTargetsData.map((target) => ({ ...target, type: "a2a" as const })),
         ];
         setTargets(targetsArray);
 

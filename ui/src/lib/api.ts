@@ -1,6 +1,6 @@
 import { Target, Listener, ListenerProtocol } from "./types";
 
-const API_URL = "http://localhost:19000";
+const API_URL = "http://localhost:15000";
 
 /**
  * Updates a single target on the MCP agentgateway server
@@ -55,7 +55,7 @@ export async function updateTarget(target: Target): Promise<void> {
  */
 export async function fetchListeners(): Promise<Listener[]> {
   try {
-    const response = await fetch(`${API_URL}/listeners`);
+    const response = await fetch(`${API_URL}/config`);
 
     if (!response.ok) {
       console.error("Failed to fetch listeners:", response);
@@ -64,26 +64,9 @@ export async function fetchListeners(): Promise<Listener[]> {
 
     const data = await response.json();
 
-    // The API will return an array of listeners
-    if (Array.isArray(data)) {
-      return data.map((listener) => {
-        if (listener.sse && listener.sse.host !== undefined && listener.sse.address === undefined) {
-          return {
-            ...listener,
-            sse: {
-              address: listener.sse.host,
-              port: listener.sse.port,
-              tls: listener.sse.tls,
-              rbac: listener.sse.rbac,
-            },
-          };
-        }
-        return listener;
-      });
-    } else {
-      // If the API returns a single object instead of an array, wrap it
-      return [data];
-    }
+    return data.binds.flatMap((b) => b.listeners).map((listener) => {
+      return listener;
+    });
   } catch (error) {
     console.error("Error fetching listeners:", error);
     throw error;
@@ -95,7 +78,7 @@ export async function fetchListeners(): Promise<Listener[]> {
  */
 export async function fetchMcpTargets(): Promise<any[]> {
   try {
-    const response = await fetch(`${API_URL}/targets/mcp`, {});
+    const response = await fetch(`${API_URL}/config`, {});
 
     if (!response.ok) {
       throw new Error(`Failed to fetch MCP targets: ${response.status} ${response.statusText}`);
@@ -175,7 +158,7 @@ export async function deleteMcpTarget(name: string): Promise<void> {
  */
 export async function fetchA2aTargets(): Promise<any[]> {
   try {
-    const response = await fetch(`${API_URL}/targets/a2a`, {});
+    const response = await fetch(`${API_URL}/config`, {});
 
     if (!response.ok) {
       throw new Error(`Failed to fetch A2A targets: ${response.status} ${response.statusText}`);
