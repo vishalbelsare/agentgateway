@@ -1,5 +1,7 @@
 mod gateway;
 pub mod httpproxy;
+#[cfg(test)]
+pub mod request_builder;
 pub mod tcpproxy;
 
 use crate::http::Body;

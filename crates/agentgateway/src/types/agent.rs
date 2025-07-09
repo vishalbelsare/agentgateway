@@ -654,7 +654,10 @@ impl RouteSet {
 					let have = self.all.get(&existing.key).expect("corrupted state");
 					let have_match = have.matches.get(existing.index).expect("corrupted state");
 
-					cmp::Ordering::reverse(Self::compare_route((m, &r.key), (have_match, &existing.key)))
+					cmp::Ordering::reverse(Self::compare_route(
+						(m, &r.key),
+						(have_match, &existing.key),
+					))
 				});
 				// TODO: replace old route
 				let insert_idx = to_insert.unwrap_or_else(|pos| pos);

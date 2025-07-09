@@ -21,6 +21,10 @@ use tokio::task::{AbortHandle, JoinSet};
 use tokio_stream::StreamExt;
 use tracing::{Instrument, debug, info, info_span, warn};
 
+#[cfg(test)]
+#[path = "gateway_test.rs"]
+mod tests;
+
 pub struct Gateway {
 	pi: Arc<ProxyInputs>,
 	drain: drain::DrainWatcher,
@@ -184,7 +188,7 @@ impl Gateway {
 		Ok(())
 	}
 
-	async fn proxy_bind(
+	pub async fn proxy_bind(
 		bind_name: BindName,
 		raw_stream: Socket,
 		inputs: Arc<ProxyInputs>,
@@ -192,7 +196,10 @@ impl Gateway {
 	) {
 		match bind_protocol(inputs.clone(), bind_name.clone()) {
 			BindProtocol::Http => {
-				let _ = Self::proxy(bind_name, inputs, None, raw_stream, drain).await;
+				let err = Self::proxy(bind_name, inputs, None, raw_stream, drain).await;
+				if let Err(e) = err {
+					warn!("proxy error: {e}");
+				}
 			},
 			BindProtocol::Tcp => Self::proxy_tcp(bind_name, inputs, None, raw_stream, drain).await,
 			BindProtocol::Tls => {

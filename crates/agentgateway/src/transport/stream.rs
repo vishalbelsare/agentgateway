@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use agent_hbone::RWStream;
 use hyper_util::client::legacy::connect::{Connected, Connection};
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::io::{AsyncRead, AsyncWrite, DuplexStream, ReadBuf};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsStream;
 
@@ -88,6 +88,15 @@ impl hyper_util_fork::client::legacy::connect::Connection for Socket {
 impl Socket {
 	pub fn into_parts(self) -> (Extension, SocketType) {
 		(self.ext, self.inner)
+	}
+
+	pub fn from_memory(stream: DuplexStream, info: TCPConnectionInfo) -> Self {
+		let mut ext = Extension::new();
+		ext.insert(info);
+		Socket {
+			ext,
+			inner: SocketType::Memory(stream),
+		}
 	}
 
 	pub fn from_tcp(stream: TcpStream) -> anyhow::Result<Self> {
@@ -173,6 +182,7 @@ pub enum SocketType {
 	Tcp(TcpStream),
 	Tls(Box<TlsStream<Box<SocketType>>>),
 	Hbone(RWStream),
+	Memory(DuplexStream),
 	Boxed(Box<SocketType>),
 }
 
@@ -186,6 +196,7 @@ impl AsyncRead for SocketType {
 			SocketType::Tcp(inner) => Pin::new(inner).poll_read(cx, buf),
 			SocketType::Tls(inner) => Pin::new(inner).poll_read(cx, buf),
 			SocketType::Hbone(inner) => Pin::new(inner).poll_read(cx, buf),
+			SocketType::Memory(inner) => Pin::new(inner).poll_read(cx, buf),
 			SocketType::Boxed(inner) => Pin::new(inner).poll_read(cx, buf),
 		}
 	}
@@ -200,6 +211,7 @@ impl AsyncWrite for SocketType {
 			SocketType::Tcp(inner) => Pin::new(inner).poll_write(cx, buf),
 			SocketType::Tls(inner) => Pin::new(inner).poll_write(cx, buf),
 			SocketType::Hbone(inner) => Pin::new(inner).poll_write(cx, buf),
+			SocketType::Memory(inner) => Pin::new(inner).poll_write(cx, buf),
 			SocketType::Boxed(inner) => Pin::new(inner).poll_write(cx, buf),
 		}
 	}
@@ -209,6 +221,7 @@ impl AsyncWrite for SocketType {
 			SocketType::Tcp(inner) => Pin::new(inner).poll_flush(cx),
 			SocketType::Tls(inner) => Pin::new(inner).poll_flush(cx),
 			SocketType::Hbone(inner) => Pin::new(inner).poll_flush(cx),
+			SocketType::Memory(inner) => Pin::new(inner).poll_flush(cx),
 			SocketType::Boxed(inner) => Pin::new(inner).poll_flush(cx),
 		}
 	}
@@ -218,6 +231,7 @@ impl AsyncWrite for SocketType {
 			SocketType::Tcp(inner) => Pin::new(inner).poll_shutdown(cx),
 			SocketType::Tls(inner) => Pin::new(inner).poll_shutdown(cx),
 			SocketType::Hbone(inner) => Pin::new(inner).poll_shutdown(cx),
+			SocketType::Memory(inner) => Pin::new(inner).poll_shutdown(cx),
 			SocketType::Boxed(inner) => Pin::new(inner).poll_shutdown(cx),
 		}
 	}
@@ -231,6 +245,7 @@ impl AsyncWrite for SocketType {
 			SocketType::Tcp(inner) => Pin::new(inner).poll_write_vectored(cx, bufs),
 			SocketType::Tls(inner) => Pin::new(inner).poll_write_vectored(cx, bufs),
 			SocketType::Hbone(inner) => Pin::new(inner).poll_write_vectored(cx, bufs),
+			SocketType::Memory(inner) => Pin::new(inner).poll_write_vectored(cx, bufs),
 			SocketType::Boxed(inner) => Pin::new(inner).poll_write_vectored(cx, bufs),
 		}
 	}
@@ -240,6 +255,7 @@ impl AsyncWrite for SocketType {
 			SocketType::Tcp(inner) => inner.is_write_vectored(),
 			SocketType::Tls(inner) => inner.is_write_vectored(),
 			SocketType::Hbone(inner) => inner.is_write_vectored(),
+			SocketType::Memory(inner) => inner.is_write_vectored(),
 			SocketType::Boxed(inner) => inner.is_write_vectored(),
 		}
 	}
