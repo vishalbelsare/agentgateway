@@ -66,3 +66,16 @@ generate-apis: install-go-tools
 		--go_out=./go/api \
 		--go_opt=paths=source_relative \
 		./crates/agentgateway/proto/workload.proto
+
+objects := $(wildcard examples/*/config.yaml)
+.PHONY: validate
+validate: $(objects)
+	echo $(objects)
+
+# Make the wildcard files depend on themselves to trigger the pattern rule
+.PHONY: $(objects)
+$(objects):
+	:
+
+examples/%/config.yaml:
+	cargo run -- --mode=validate -f $@
