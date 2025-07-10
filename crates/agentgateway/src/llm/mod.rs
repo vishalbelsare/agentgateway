@@ -507,6 +507,7 @@ mod universal {
 	use serde::{Deserialize, Deserializer, Serialize, Serializer};
 	use serde_json::Value;
 	#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+	#[serde(rename_all = "snake_case")]
 	pub enum ToolChoiceType {
 		None,
 		Auto,
