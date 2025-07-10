@@ -32,8 +32,9 @@ use crate::http::{
 	uri,
 };
 use crate::mcp::rbac::RuleSet;
+use crate::proxy::ProxyError;
 use crate::transport::tls;
-use crate::types::discovery::NamespacedHostname;
+use crate::types::discovery::{NamespacedHostname, Service};
 use crate::types::proto;
 use crate::types::proto::ProtoError;
 use crate::*;
@@ -125,9 +126,8 @@ impl ListenerProtocol {
 
 pub type ListenerKey = Strng;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub struct Route {
 	// Internal name
 	pub key: RouteKey,
@@ -144,7 +144,7 @@ pub struct Route {
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub filters: Vec<RouteFilter>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub backends: Vec<RouteBackend>,
+	pub backends: Vec<RouteBackendReference>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub policies: Option<TrafficPolicy>,
 }
@@ -153,7 +153,7 @@ pub type RouteKey = Strng;
 pub type RouteName = Strng;
 pub type RouteRuleName = Strng;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub struct TCPRoute {
@@ -168,12 +168,20 @@ pub struct TCPRoute {
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub rule_name: Option<RouteRuleName>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub backends: Vec<TCPRouteBackend>,
+	pub backends: Vec<TCPRouteBackendReference>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schema", derive(JsonSchema))]
+pub struct TCPRouteBackendReference {
+	#[serde(default = "default_weight")]
+	pub weight: usize,
+	pub backend: SimpleBackendReference,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TCPRouteBackend {
 	#[serde(default = "default_weight")]
 	pub weight: usize,
@@ -261,9 +269,8 @@ pub enum PathMatch {
 	),
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub enum RouteFilter {
 	RequestHeaderModifier(filters::HeaderModifier),
 	ResponseHeaderModifier(filters::HeaderModifier),
@@ -301,9 +308,19 @@ pub enum PathRedirect {
 	Prefix(Strng),
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "schema", derive(JsonSchema))]
+pub struct RouteBackendReference {
+	#[serde(default = "default_weight")]
+	pub weight: usize,
+	#[serde(flatten)]
+	pub backend: BackendReference,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub filters: Vec<RouteFilter>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RouteBackend {
 	#[serde(default = "default_weight")]
 	pub weight: usize,
@@ -317,56 +334,113 @@ fn default_weight() -> usize {
 	1
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub enum Backend {
-	Service {
-		name: NamespacedHostname,
-		port: u16,
-	},
+	Service(Arc<Service>, u16),
 	#[serde(rename = "host")]
-	Opaque(Target), // Hostname or IP
-	Dynamic {},
+	Opaque(BackendName, Target), // Hostname or IP
 	#[serde(rename = "mcp")]
-	MCP(McpBackend),
+	MCP(BackendName, McpBackend),
 	#[serde(rename = "ai")]
-	AI(crate::llm::AIBackend),
+	AI(BackendName, crate::llm::AIBackend),
+	Dynamic {},
+	Invalid,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BackendReference {
+	Service { name: NamespacedHostname, port: u16 },
+	Backend(BackendName),
 	Invalid,
 }
 
 impl From<SimpleBackend> for Backend {
 	fn from(value: SimpleBackend) -> Self {
 		match value {
-			SimpleBackend::Service { name, port } => Backend::Service { name, port },
-			SimpleBackend::Opaque(target) => Backend::Opaque(target),
+			SimpleBackend::Service(svc, port) => Backend::Service(svc, port),
+			SimpleBackend::Opaque(name, target) => Backend::Opaque(name, target),
 			SimpleBackend::Invalid => Backend::Invalid,
 		}
 	}
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub enum SimpleBackend {
-	Service {
-		name: NamespacedHostname,
-		port: u16,
-	},
+	Service(Arc<Service>, u16),
 	#[serde(rename = "host")]
-	Opaque(Target), // Hostname or IP
+	Opaque(BackendName, Target), // Hostname or IP
 	Invalid,
 }
 
-impl Backend {
-	pub fn name(&self) -> Strng {
+impl TryFrom<Backend> for SimpleBackend {
+	type Error = anyhow::Error;
+
+	fn try_from(value: Backend) -> Result<Self, Self::Error> {
+		match value {
+			Backend::Service(svc, port) => Ok(SimpleBackend::Service(svc, port)),
+			Backend::Opaque(name, tgt) => Ok(SimpleBackend::Opaque(name, tgt)),
+			Backend::Invalid => Ok(SimpleBackend::Invalid),
+			_ => anyhow::bail!("unsupported backend type"),
+		}
+	}
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "schema", derive(JsonSchema))]
+pub enum SimpleBackendReference {
+	Service { name: NamespacedHostname, port: u16 },
+	Backend(BackendName), // Hostname or IP
+	Invalid,
+}
+
+impl SimpleBackendReference {
+	pub fn name(&self) -> BackendName {
 		match self {
-			Backend::Service { name, port } => {
-				strng::format!("service/{name}:{port}")
+			SimpleBackendReference::Service { name, port } => {
+				strng::format!("service/{}/{}:{port}", name.namespace, name.hostname)
 			},
-			Backend::Opaque(v) => strng::format!("opaque/{v}"),
-			Backend::MCP(mcp) => strng::format!("mcp/{}", mcp.name),
-			Backend::AI(ai) => strng::format!("ai/{}", ai.name),
+			SimpleBackendReference::Backend(name) => name.clone(),
+			SimpleBackendReference::Invalid => strng::format!("invalid"),
+		}
+	}
+}
+
+impl SimpleBackend {
+	pub fn name(&self) -> BackendName {
+		match self {
+			SimpleBackend::Service(svc, port) => {
+				strng::format!("service/{}/{}:{port}", svc.namespace, svc.hostname)
+			},
+			SimpleBackend::Opaque(name, tgt) => name.clone(),
+			SimpleBackend::Invalid => strng::format!("invalid"),
+		}
+	}
+}
+
+impl BackendReference {
+	pub fn name(&self) -> BackendName {
+		match self {
+			BackendReference::Service { name, port } => {
+				strng::format!("service/{}/{}:{port}", name.namespace, name.hostname)
+			},
+			BackendReference::Backend(name) => name.clone(),
+			BackendReference::Invalid => strng::format!("invalid"),
+		}
+	}
+}
+impl Backend {
+	pub fn name(&self) -> BackendName {
+		match self {
+			Backend::Service(svc, port) => {
+				strng::format!("service/{}/{}:{port}", svc.namespace, svc.hostname)
+			},
+			Backend::Opaque(name, tgt) => name.clone(),
+			Backend::MCP(name, mcp) => name.clone(),
+			Backend::AI(name, ai) => name.clone(),
 			// TODO: give it a name
 			Backend::Dynamic {} => strng::format!("dynamic"),
 			Backend::Invalid => strng::format!("invalid"),
@@ -380,7 +454,6 @@ pub type BackendName = Strng;
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub struct McpBackend {
-	pub name: BackendName,
 	pub targets: Vec<Arc<McpTarget>>,
 }
 
@@ -621,7 +694,7 @@ impl serde::Serialize for RouteSet {
 	where
 		S: Serializer,
 	{
-		self.inner.serialize(serializer)
+		self.all.serialize(serializer)
 	}
 }
 
@@ -905,7 +978,6 @@ pub type PolicyName = Strng;
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub struct TargetedPolicy {
 	pub name: PolicyName,
 	pub target: PolicyTarget,
@@ -920,17 +992,11 @@ pub enum PolicyTarget {
 	Listener(ListenerKey),
 	Route(RouteName),
 	RouteRule(RouteKey),
-	RouteBackend(BackendName),
-	Service(NamespacedHostname),
-	McpTarget(McpTargetName),
-	Opaque(Target),
-	// not yet implemented.
-	TODO,
+	Backend(BackendName),
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Policy {
 	// Supported targets: RouteBackend, only when Backend type is MCP
 	McpAuthorization(McpAuthorization),
@@ -948,21 +1014,16 @@ pub enum Policy {
 	// Transformation(),
 	// Supported targets: Gateway < Route < RouteRule; single policy allowed
 	#[serde(rename = "ai")]
-	#[cfg_attr(feature = "schema", schemars(with = "serde_json::value::RawValue"))]
 	AI(llm::Policy),
 	// Supported targets: Gateway < Route < RouteRule; single policy allowed
-	#[cfg_attr(feature = "schema", schemars(with = "serde_json::value::RawValue"))]
 	LocalRateLimit(Vec<crate::http::localratelimit::RateLimit>),
 	// Supported targets: Gateway < Route < RouteRule; single policy allowed
-	#[cfg_attr(feature = "schema", schemars(with = "serde_json::value::RawValue"))]
 	ExtAuthz(ext_authz::ExtAuthz),
 	// Supported targets: Gateway < Route < RouteRule; single policy allowed
-	#[cfg_attr(feature = "schema", schemars(with = "serde_json::value::RawValue"))]
 	RemoteRateLimit(remoteratelimit::RemoteRateLimit),
 	// Supported targets: Gateway < Route < RouteRule; single policy allowed
 	// ExtProc(),
 	// Supported targets: Gateway < Route < RouteRule; single policy allowed
-	#[cfg_attr(feature = "schema", schemars(with = "serde_json::value::RawValue"))]
 	JwtAuth(crate::http::jwt::Jwt),
 }
 

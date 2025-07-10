@@ -38,7 +38,6 @@ mod vertex;
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub struct AIBackend {
-	pub name: BackendName,
 	pub provider: AIProvider,
 	pub host_override: Option<Target>,
 }

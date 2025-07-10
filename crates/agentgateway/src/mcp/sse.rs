@@ -88,15 +88,15 @@ impl App {
 		}
 	}
 
-	pub async fn serve(&self, backends: McpBackend, req: Request) -> Response {
+	pub async fn serve(&self, name: BackendName, backends: McpBackend, req: Request) -> Response {
 		let (backends, authorization_policies, authn) = {
 			let binds = self.state.read_binds();
-			let (authorization_policies, authn) = binds.mcp_policies(backends.name.clone());
+			let (authorization_policies, authn) = binds.mcp_policies(name.clone());
 			let nt = backends
 				.targets
 				.iter()
 				.map(|t| {
-					let backend_policies = binds.backend_policies(PolicyTarget::McpTarget(t.name.clone()));
+					let backend_policies = binds.backend_policies(PolicyTarget::Backend(t.name.clone()));
 					Arc::new(McpTarget {
 						name: t.name.clone(),
 						spec: t.spec.clone(),
@@ -107,7 +107,7 @@ impl App {
 				.collect_vec();
 			(
 				McpBackendGroup {
-					name: backends.name.clone(),
+					name: name.clone(),
 					targets: nt,
 				},
 				authorization_policies,

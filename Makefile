@@ -46,6 +46,15 @@ objects := $(wildcard examples/*/config.json)
 install-go-tools:
 	go install github.com/golang/protobuf/protoc-gen-go
 
+
+.PHONY: gen
+gen: generate-apis generate-schema
+	:
+
+.PHONY: generate-schema
+generate-schema:
+	cargo run -F schema > schema/local.json
+
 # Code generation for xds apis
 .PHONY: generate-apis
 generate-apis: install-go-tools

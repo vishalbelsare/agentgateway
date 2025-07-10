@@ -4,8 +4,8 @@ use crate::proxy::request_builder::RequestBuilder;
 use crate::store::Stores;
 use crate::transport::stream::{Socket, TCPConnectionInfo};
 use crate::types::agent::{
-	Backend, Bind, BindName, Listener, ListenerProtocol, ListenerSet, PathMatch, Route, RouteBackend,
-	RouteMatch, RouteSet, Target,
+	Backend, BackendReference, Bind, BindName, Listener, ListenerProtocol, ListenerSet, PathMatch,
+	Route, RouteBackend, RouteBackendReference, RouteMatch, RouteSet, Target,
 };
 use crate::*;
 use crate::{ProxyInputs, client, mcp};
@@ -30,6 +30,7 @@ async fn basic_handling() {
 	let mock = simple_mock().await;
 	let t = setup()
 		.unwrap()
+		.with_backend(*mock.address())
 		.with_bind(simple_bind(basic_route(*mock.address())));
 	let io = t.serve_http(strng::new("bind"));
 	let res = RequestBuilder::new(Method::GET, "http://memory.example.com")
@@ -52,9 +53,9 @@ fn basic_route(target: SocketAddr) -> Route {
 		filters: Default::default(),
 		route_name: Default::default(),
 		rule_name: None,
-		backends: vec![RouteBackend {
+		backends: vec![RouteBackendReference {
 			weight: 1,
-			backend: Backend::Opaque(Target::Address(target)),
+			backend: BackendReference::Backend(target.to_string().into()),
 			filters: Default::default(),
 		}],
 		policies: None,
@@ -128,6 +129,13 @@ impl TestBind {
 		self.pi.stores.binds.write().insert_bind(bind);
 		self
 	}
+
+	pub fn with_backend(self, b: SocketAddr) -> Self {
+		let b = Backend::Opaque(strng::format!("{}", b), Target::Address(b));
+		self.pi.stores.binds.write().insert_backend(b);
+		self
+	}
+
 	pub fn serve_http(&self, bind_name: BindName) -> Client<MemoryConnector, Body> {
 		let io = self.serve(bind_name);
 		::hyper_util::client::legacy::Client::builder(TokioExecutor::new())
