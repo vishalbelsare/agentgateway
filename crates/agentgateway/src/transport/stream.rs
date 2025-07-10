@@ -3,14 +3,17 @@ use std::io::{Error, IoSlice};
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 use std::time::Instant;
 
 use agent_hbone::RWStream;
 use hyper_util::client::legacy::connect::{Connected, Connection};
+use prometheus_client::metrics::counter::Atomic;
 use tokio::io::{AsyncRead, AsyncWrite, DuplexStream, ReadBuf};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsStream;
+use tracing::event;
 
 #[derive(Debug, Clone)]
 pub struct TCPConnectionInfo {
@@ -59,9 +62,43 @@ pub struct HBONEConnectionInfo {
 	pub hbone_address: SocketAddr,
 }
 
+#[derive(Debug, Default)]
+pub struct Metrics {
+	counter: Option<BytesCounter>,
+	logging: LoggingMode,
+}
+
+impl Metrics {
+	fn with_counter() -> Metrics {
+		Self {
+			counter: Some(Default::default()),
+			logging: LoggingMode::default(),
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+pub enum LoggingMode {
+	#[default]
+	None,
+	Downstream,
+	Upstream,
+}
+
+impl Display for LoggingMode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			LoggingMode::None => f.write_str("none"),
+			LoggingMode::Downstream => f.write_str("downstream"),
+			LoggingMode::Upstream => f.write_str("upstream"),
+		}
+	}
+}
+
 pub struct Socket {
 	ext: Extension,
 	inner: SocketType,
+	metrics: Metrics,
 }
 
 impl Connection for Socket {
@@ -86,8 +123,8 @@ impl hyper_util_fork::client::legacy::connect::Connection for Socket {
 }
 
 impl Socket {
-	pub fn into_parts(self) -> (Extension, SocketType) {
-		(self.ext, self.inner)
+	pub fn into_parts(self) -> (Extension, Metrics, SocketType) {
+		(self.ext, self.metrics, self.inner)
 	}
 
 	pub fn from_memory(stream: DuplexStream, info: TCPConnectionInfo) -> Self {
@@ -96,6 +133,7 @@ impl Socket {
 		Socket {
 			ext,
 			inner: SocketType::Memory(stream),
+			metrics: Metrics::with_counter(),
 		}
 	}
 
@@ -110,10 +148,15 @@ impl Socket {
 		Ok(Socket {
 			ext,
 			inner: SocketType::Tcp(stream),
+			metrics: Metrics::with_counter(),
 		})
 	}
 
-	pub fn from_tls(mut ext: Extension, tls: TlsStream<Box<SocketType>>) -> anyhow::Result<Self> {
+	pub fn from_tls(
+		mut ext: Extension,
+		metrics: Metrics,
+		tls: TlsStream<Box<SocketType>>,
+	) -> anyhow::Result<Self> {
 		let info = {
 			let server_name = match &tls {
 				TlsStream::Server(s) => {
@@ -134,6 +177,7 @@ impl Socket {
 		Ok(Socket {
 			ext,
 			inner: SocketType::Tls(Box::new(tls)),
+			metrics,
 		})
 	}
 
@@ -144,7 +188,13 @@ impl Socket {
 		Socket {
 			ext,
 			inner: SocketType::Hbone(hbone),
+			// TODO: we probably want a counter here...
+			metrics: Default::default(),
 		}
+	}
+
+	pub fn with_logging(&mut self, l: LoggingMode) {
+		self.metrics.logging = l;
 	}
 
 	pub fn get_ext(&self) -> Extension {
@@ -175,6 +225,10 @@ impl Socket {
 		// TODO: settings like timeout, etc from hyper
 		let res = TcpStream::connect(target).await?;
 		Socket::from_tcp(res)
+	}
+
+	pub fn counter(&self) -> Option<BytesCounter> {
+		self.metrics.counter.clone()
 	}
 }
 
@@ -267,7 +321,13 @@ impl AsyncRead for Socket {
 		cx: &mut Context<'_>,
 		buf: &mut ReadBuf<'_>,
 	) -> Poll<std::io::Result<()>> {
-		Pin::new(&mut self.inner).poll_read(cx, buf)
+		let bytes = buf.filled().len();
+		let poll = Pin::new(&mut self.inner).poll_read(cx, buf);
+		let bytes = buf.filled().len() - bytes;
+		if let Some(c) = &self.metrics.counter {
+			c.recv(bytes);
+		}
+		poll
 	}
 }
 impl AsyncWrite for Socket {
@@ -276,7 +336,13 @@ impl AsyncWrite for Socket {
 		cx: &mut Context<'_>,
 		buf: &[u8],
 	) -> Poll<Result<usize, Error>> {
-		Pin::new(&mut self.inner).poll_write(cx, buf)
+		let poll = Pin::new(&mut self.inner).poll_write(cx, buf);
+		if let Some(c) = &self.metrics.counter
+			&& let Poll::Ready(Ok(bytes)) = poll
+		{
+			c.sent(bytes);
+		};
+		poll
 	}
 
 	fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
@@ -292,7 +358,13 @@ impl AsyncWrite for Socket {
 		cx: &mut Context<'_>,
 		bufs: &[IoSlice<'_>],
 	) -> Poll<Result<usize, Error>> {
-		Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
+		let poll = Pin::new(&mut self.inner).poll_write_vectored(cx, bufs);
+		if let Some(c) = &self.metrics.counter
+			&& let Poll::Ready(Ok(bytes)) = poll
+		{
+			c.sent(bytes);
+		};
+		poll
 	}
 
 	fn is_write_vectored(&self) -> bool {
@@ -351,4 +423,65 @@ fn to_canonical(addr: SocketAddr) -> SocketAddr {
 	// another match has to be used for IPv4 and IPv6 support
 	let ip = addr.ip().to_canonical();
 	SocketAddr::from((ip, addr.port()))
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct BytesCounter {
+	counts: Arc<(AtomicU64, AtomicU64)>,
+}
+
+impl BytesCounter {
+	pub fn sent(&self, amt: usize) {
+		self.counts.0.inc_by(amt as u64);
+	}
+	pub fn recv(&self, amt: usize) {
+		self.counts.1.inc_by(amt as u64);
+	}
+	pub fn load(&self) -> (u64, u64) {
+		(
+			self.counts.0.load(Ordering::Relaxed),
+			self.counts.1.load(Ordering::Relaxed),
+		)
+	}
+}
+
+impl Drop for Metrics {
+	fn drop(&mut self) {
+		if self.logging == LoggingMode::None {
+			return;
+		}
+		// let src = self.tcp().peer_addr;
+		let (sent, recv) = if let Some((a, b)) = self.counter.take().map(|counter| counter.load()) {
+			(Some(a), Some(b))
+		} else {
+			(None, None)
+		};
+		match self.logging {
+			LoggingMode::None => {},
+			LoggingMode::Upstream => {
+				event!(
+					target: "upstream connection",
+					parent: None,
+					tracing::Level::DEBUG,
+
+					sent,
+					recv,
+
+					"closed"
+				);
+			},
+			LoggingMode::Downstream => {
+				event!(
+					target: "downstream connection",
+					parent: None,
+					tracing::Level::DEBUG,
+
+					sent,
+					recv,
+
+					"closed"
+				);
+			},
+		}
+	}
 }
