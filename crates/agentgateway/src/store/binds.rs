@@ -302,7 +302,6 @@ impl Store {
 	}
 
 	pub fn backend(&self, r: &BackendName) -> Option<Arc<Backend>> {
-		tracing::error!("howardjohn: read {} from {:?}", r, self.backends_by_name.keys().collect::<Vec<_>>());
 		self.backends_by_name.get(r).cloned()
 	}
 

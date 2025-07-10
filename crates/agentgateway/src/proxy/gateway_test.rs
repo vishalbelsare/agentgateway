@@ -1,4 +1,4 @@
-use crate::http::Body;
+use crate::http::{Body, Response};
 use crate::proxy::Gateway;
 use crate::proxy::request_builder::RequestBuilder;
 use crate::store::Stores;
@@ -10,9 +10,12 @@ use crate::types::agent::{
 use crate::*;
 use crate::{ProxyInputs, client, mcp};
 use ::http::Method;
+use ::http::Request;
 use ::http::Uri;
+use ::http::Version;
 use agent_core::drain::{DrainTrigger, DrainWatcher};
 use agent_core::{drain, metrics, strng};
+use axum::body::to_bytes;
 use hyper_util::client::legacy::Client;
 use hyper_util::client::legacy::connect::Connected;
 use hyper_util::rt::tokio::WithHyperIo;
@@ -27,17 +30,64 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
 async fn basic_handling() {
+	let (_mock, _bind, io) = basic_setup().await;
+	let res = send_request(io, Method::POST, "http://lo").await;
+	assert_eq!(res.status(), 200);
+	let body = read_body(res.into_body()).await;
+	assert_eq!(body.method, Method::POST);
+}
+
+#[tokio::test]
+async fn multiple_requests() {
+	let (_mock, _bind, io) = basic_setup().await;
+	let res = send_request(io.clone(), Method::GET, "http://lo").await;
+	assert_eq!(res.status(), 200);
+	let res = send_request(io.clone(), Method::GET, "http://lo").await;
+	assert_eq!(res.status(), 200);
+}
+
+#[tokio::test]
+async fn basic_http2() {
+	let mock = simple_mock().await;
+	let t = setup()
+		.unwrap()
+		.with_backend(*mock.address())
+		.with_bind(simple_bind(basic_route(*mock.address())));
+	let io = t.serve_http2(strng::new("bind"));
+	let res = RequestBuilder::new(Method::GET, "http://lo")
+		.version(Version::HTTP_2)
+		.send(io)
+		.await
+		.unwrap();
+	assert_eq!(res.status(), 200);
+}
+
+async fn send_request(io: Client<MemoryConnector, Body>, method: Method, url: &str) -> Response {
+	RequestBuilder::new(method, url).send(io).await.unwrap()
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct RequestDump {
+	#[serde(with = "http_serde::method")]
+	method: ::http::Method,
+
+	#[serde(with = "http_serde::uri")]
+	uri: ::http::Uri,
+
+	#[serde(with = "http_serde::header_map")]
+	headers: ::http::HeaderMap,
+
+	body: Bytes,
+}
+
+async fn basic_setup() -> (MockServer, TestBind, Client<MemoryConnector, Body>) {
 	let mock = simple_mock().await;
 	let t = setup()
 		.unwrap()
 		.with_backend(*mock.address())
 		.with_bind(simple_bind(basic_route(*mock.address())));
 	let io = t.serve_http(strng::new("bind"));
-	let res = RequestBuilder::new(Method::GET, "http://memory.example.com")
-		.send(io)
-		.await
-		.unwrap();
-	assert_eq!(res.status(), 200);
+	(mock, t, io)
 }
 
 fn basic_route(target: SocketAddr) -> Route {
@@ -79,11 +129,20 @@ fn simple_bind(route: Route) -> Bind {
 	}
 }
 
+const VERSION: &'static str = "version";
+
 async fn simple_mock() -> MockServer {
 	let mock = wiremock::MockServer::start().await;
-	Mock::given(wiremock::matchers::method("GET"))
-		.and(wiremock::matchers::path("/"))
-		.respond_with(ResponseTemplate::new(200))
+	Mock::given(wiremock::matchers::path_regex("/.*"))
+		.respond_with(|req: &wiremock::Request| {
+			let r = RequestDump {
+				method: req.method.clone(),
+				uri: req.url.to_string().parse().unwrap(),
+				headers: req.headers.clone(),
+				body: Bytes::copy_from_slice(&req.body),
+			};
+			ResponseTemplate::new(200).set_body_json(r)
+		})
 		.mount(&mock)
 		.await;
 	mock
@@ -109,7 +168,8 @@ impl tower::Service<Uri> for MemoryConnector {
 		Poll::Ready(Ok(()))
 	}
 
-	fn call(&mut self, _dst: Uri) -> Self::Future {
+	fn call(&mut self, dst: Uri) -> Self::Future {
+		trace!("establish connection for {dst}");
 		let mut io = self.io.lock().unwrap();
 		let io = io.take().expect("MemoryConnector can only be called once");
 		let io = Socket::from_memory(
@@ -140,6 +200,16 @@ impl TestBind {
 		let io = self.serve(bind_name);
 		::hyper_util::client::legacy::Client::builder(TokioExecutor::new())
 			.timer(TokioTimer::new())
+			.build(MemoryConnector {
+				io: Arc::new(Mutex::new(Some(io))),
+			})
+	}
+	// The need to split http/http2 is a hyper limit, not our proxy
+	pub fn serve_http2(&self, bind_name: BindName) -> Client<MemoryConnector, Body> {
+		let io = self.serve(bind_name);
+		::hyper_util::client::legacy::Client::builder(TokioExecutor::new())
+			.timer(TokioTimer::new())
+			.http2_only(true)
 			.build(MemoryConnector {
 				io: Arc::new(Mutex::new(Some(io))),
 			})
@@ -195,4 +265,13 @@ fn setup() -> anyhow::Result<TestBind> {
 		drain_rx,
 		drain_tx,
 	})
+}
+
+async fn read_body_raw(body: axum_core::body::Body) -> Bytes {
+	to_bytes(body, 2_097_152).await.unwrap()
+}
+
+async fn read_body(body: axum_core::body::Body) -> RequestDump {
+	let b = read_body_raw(body).await;
+	serde_json::from_slice(&b).unwrap()
 }
