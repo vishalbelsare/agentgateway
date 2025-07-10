@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::management::admin::{AdminFallback, AdminResponse, ConfigDumpHandler};
-use crate::{Config, ConfigSource, yamlviajson};
+use crate::{Config, ConfigSource, client, yamlviajson};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
@@ -24,6 +24,7 @@ pub struct UiHandler {
 #[derive(Clone, Debug)]
 struct App {
 	state: Arc<Config>,
+	client: client::Client,
 }
 
 impl App {
@@ -50,7 +51,10 @@ impl UiHandler {
 			.nest_service("/ui", ui_service)
 			.route("/", get(|| async { Redirect::permanent("/ui") }))
 			.layer(add_cors_layer())
-			.with_state(App { state: cfg });
+			.with_state(App {
+				state: cfg.clone(),
+				client: client::Client::new(&cfg.dns, None),
+			});
 		Self { router }
 	}
 }
@@ -98,9 +102,15 @@ async fn write_config(
 			));
 		},
 	};
-
 	let yaml_content =
 		yamlviajson::to_string(&config_json).map_err(|e| ErrorResponse::Anyhow(e.into()))?;
+
+	if let Err(e) =
+		crate::types::local::NormalizedLocalConfig::from(app.client.clone(), yaml_content.as_str())
+			.await
+	{
+		return Err(ErrorResponse::String(e.to_string()));
+	}
 
 	// Write the YAML content to the file
 	fs_err::tokio::write(file_path, yaml_content)
