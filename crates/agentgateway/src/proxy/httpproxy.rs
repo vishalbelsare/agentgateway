@@ -758,8 +758,13 @@ async fn make_backend_call(
 			let inputs = inputs.clone();
 			let backend = backend.clone();
 			let name = name.clone();
+			let mcp_response_log = log.map(|l| l.mcp_status.clone()).expect("must be set");
 			return Ok(Box::pin(async move {
-				inputs.mcp_state.serve(name, backend, req).map(Ok).await
+				inputs
+					.mcp_state
+					.serve(name, backend, req, mcp_response_log)
+					.map(Ok)
+					.await
 			}));
 		},
 		Backend::Invalid => return Err(ProxyError::BackendDoesNotExist),

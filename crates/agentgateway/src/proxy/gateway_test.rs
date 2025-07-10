@@ -129,7 +129,7 @@ fn simple_bind(route: Route) -> Bind {
 	}
 }
 
-const VERSION: &'static str = "version";
+const VERSION: &str = "version";
 
 async fn simple_mock() -> MockServer {
 	let mock = wiremock::MockServer::start().await;
