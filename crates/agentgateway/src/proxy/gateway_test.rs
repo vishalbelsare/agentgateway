@@ -5,7 +5,8 @@ use crate::store::Stores;
 use crate::transport::stream::{Socket, TCPConnectionInfo};
 use crate::types::agent::{
 	Backend, BackendReference, Bind, BindName, Listener, ListenerProtocol, ListenerSet, PathMatch,
-	Route, RouteBackend, RouteBackendReference, RouteMatch, RouteSet, Target,
+	Policy, PolicyTarget, Route, RouteBackend, RouteBackendReference, RouteMatch, RouteSet, Target,
+	TargetedPolicy,
 };
 use crate::*;
 use crate::{ProxyInputs, client, mcp};
@@ -62,6 +63,30 @@ async fn basic_http2() {
 	assert_eq!(res.status(), 200);
 }
 
+#[tokio::test]
+async fn local_ratelimit() {
+	let (_mock, mut bind, io) = basic_setup().await;
+	bind = bind.with_policy(TargetedPolicy {
+		name: strng::new("rl"),
+		target: PolicyTarget::Route("route".into()),
+		policy: Policy::LocalRateLimit(vec![
+			http::localratelimit::RateLimitSerde {
+				max_tokens: 1,
+				tokens_per_fill: 1,
+				fill_interval: Duration::from_secs(1),
+				limit_type: Default::default(),
+			}
+			.try_into()
+			.unwrap(),
+		]),
+	});
+
+	let res = send_request(io.clone(), Method::GET, "http://lo").await;
+	assert_eq!(res.status(), 200);
+	let res = send_request(io.clone(), Method::GET, "http://lo").await;
+	assert_eq!(res.status(), 429);
+}
+
 async fn send_request(io: Client<MemoryConnector, Body>, method: Method, url: &str) -> Response {
 	RequestBuilder::new(method, url).send(io).await.unwrap()
 }
@@ -93,6 +118,7 @@ async fn basic_setup() -> (MockServer, TestBind, Client<MemoryConnector, Body>) 
 fn basic_route(target: SocketAddr) -> Route {
 	Route {
 		key: "route".into(),
+		route_name: "route".into(),
 		hostnames: Default::default(),
 		matches: vec![RouteMatch {
 			headers: vec![],
@@ -101,7 +127,6 @@ fn basic_route(target: SocketAddr) -> Route {
 			query: vec![],
 		}],
 		filters: Default::default(),
-		route_name: Default::default(),
 		rule_name: None,
 		backends: vec![RouteBackendReference {
 			weight: 1,
@@ -196,6 +221,10 @@ impl TestBind {
 		self
 	}
 
+	pub fn with_policy(self, p: TargetedPolicy) -> TestBind {
+		self.pi.stores.binds.write().insert_policy(p);
+		self
+	}
 	pub fn serve_http(&self, bind_name: BindName) -> Client<MemoryConnector, Body> {
 		let io = self.serve(bind_name);
 		::hyper_util::client::legacy::Client::builder(TokioExecutor::new())

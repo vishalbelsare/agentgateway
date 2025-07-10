@@ -269,7 +269,6 @@ impl Store {
 					};
 					match &p.policy {
 						Policy::McpAuthorization(authz) => Some(authz.clone().into_inner()),
-						Policy::McpAuthorization(authz) => Some(authz.clone().into_inner()),
 						_ => None,
 					}
 				})

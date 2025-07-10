@@ -998,10 +998,10 @@ pub enum PolicyTarget {
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Policy {
-	// Supported targets: RouteBackend, only when Backend type is MCP
+	// Supported targets: Backend, only when Backend type is MCP
 	McpAuthorization(McpAuthorization),
+	// Supported targets: Backend, only when Backend type is MCP
 	McpAuthentication(McpAuthentication),
-
 	// Support targets: Backend; single policy allowed
 	A2a(A2aPolicy),
 	// Supported targets: Backend; single policy allowed
@@ -1009,12 +1009,12 @@ pub enum Policy {
 	BackendTLS(http::backendtls::BackendTLS),
 	// Supported targets: Backend; single policy allowed
 	BackendAuth(BackendAuth),
+	// Supported targets: Backend; single policy allowed
+	#[serde(rename = "ai")]
+	AI(llm::Policy),
 
 	// Supported targets: Gateway < Route < RouteRule; single policy allowed
 	// Transformation(),
-	// Supported targets: Gateway < Route < RouteRule; single policy allowed
-	#[serde(rename = "ai")]
-	AI(llm::Policy),
 	// Supported targets: Gateway < Route < RouteRule; single policy allowed
 	LocalRateLimit(Vec<crate::http::localratelimit::RateLimit>),
 	// Supported targets: Gateway < Route < RouteRule; single policy allowed
