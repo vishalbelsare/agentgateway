@@ -161,10 +161,15 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
+            # Performance is horrendous on musl without jemalloc
+            features: jemalloc
           - os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-musl
+            # TODO: arm64 build fails with jemalloc for some reason?
+            features: default
           - os: macos-latest
             target: aarch64-apple-darwin
+            features: default
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
@@ -194,7 +199,7 @@ jobs:
     - name: Build
       run: make build
       env:
-        CARGO_BUILD_ARGS: "--target ${{ matrix.target }}"
+        CARGO_BUILD_ARGS: "--target ${{ matrix.target }} -F ${{ matrix.features }}"
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
