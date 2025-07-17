@@ -68,11 +68,11 @@ export function ConfigError({ error }: ConfigErrorProps) {
           <div className="border-t pt-4">
             <h4 className="font-medium mb-2">Common configuration issues:</h4>
             <ul className="text-sm space-y-1 text-muted-foreground">
-              <li>• Missing or invalid JSON/YAML syntax</li>
-              <li>• Missing required configuration sections</li>
-              <li>• Invalid port numbers or addresses</li>
-              <li>• Incorrect file paths or permissions</li>
-              <li>• Missing dependencies or certificates</li>
+              <li>Missing or invalid JSON/YAML syntax</li>
+              <li>Missing required configuration sections</li>
+              <li>Invalid port numbers or addresses</li>
+              <li>Incorrect file paths or permissions</li>
+              <li>Missing dependencies or certificates</li>
             </ul>
           </div>
         </CardContent>
