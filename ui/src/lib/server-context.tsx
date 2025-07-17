@@ -63,6 +63,16 @@ export function ServerProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const handleConfigurationError = (err: any) => {
+    if (err instanceof Error && (err as any).isConfigurationError) {
+      setConfigError(err as Error & { isConfigurationError?: boolean; status?: number });
+      setConnectionError(null);
+    } else {
+      setConnectionError(err instanceof Error ? err.message : "Failed to refresh binds");
+      setConfigError(null);
+    }
+  };
+
   // Function to refresh listeners (now delegates to refreshBinds)
   const refreshListeners = async () => {
     await refreshBinds();
