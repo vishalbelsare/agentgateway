@@ -59,14 +59,7 @@ export function ServerProvider({ children }: { children: React.ReactNode }) {
       setPolicies(allPolicies);
     } catch (err) {
       console.error("Error refreshing binds:", err);
-
-      if (err instanceof Error && (err as any).isConfigurationError) {
-        setConfigError(err as Error & { isConfigurationError?: boolean; status?: number });
-        setConnectionError(null);
-      } else {
-        setConnectionError(err instanceof Error ? err.message : "Failed to refresh binds");
-        setConfigError(null);
-      }
+      handleConfigurationError(err);
     }
   };
 
