@@ -446,24 +446,39 @@ export default function PlaygroundPage() {
 
     try {
       if (backendType === "mcp") {
-        // Connect to MCP endpoint
         setConnectionState((prev) => ({ ...prev, connectionType: "mcp" }));
-
-        const headers: Record<string, string> = {};
-        if (connectionState.authToken) {
-          headers["Authorization"] = `Bearer ${connectionState.authToken}`;
-        }
 
         const client = new McpClient(
           { name: "agentgateway-dashboard", version: "0.1.0" },
           { capabilities: {} }
         );
 
-        const transport = new McpSseTransport(new URL("/sse", selectedRoute.endpoint), {
+        const headers: Record<string, string> = {
+          "Accept": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "mcp-protocol-version": "2024-11-05",
+        };
+        
+        // Only add auth header if token is provided and not empty
+        if (connectionState.authToken && connectionState.authToken.trim()) {
+          headers["Authorization"] = `Bearer ${connectionState.authToken}`;
+        }
+
+        const sseUrl = selectedRoute.endpoint.endsWith('/') ? `${selectedRoute.endpoint}sse` : `${selectedRoute.endpoint}/sse`;
+        const transport = new McpSseTransport(new URL(sseUrl), {
           eventSourceInit: {
-            fetch: (url, init) => fetch(url, { ...init, headers: headers as HeadersInit }),
+            fetch: (url, init) => {
+              return fetch(url, { 
+                ...init, 
+                headers: headers as HeadersInit,
+              });
+            },
           },
-          requestInit: { headers: headers as HeadersInit },
+          requestInit: { 
+            headers: headers as HeadersInit,
+            credentials: 'omit',
+            mode: 'cors'
+          },
         });
 
         await client.connect(transport);
@@ -527,22 +542,56 @@ export default function PlaygroundPage() {
       }
     } catch (error: any) {
       console.error("Failed to connect:", error);
+      console.error("Error details:", {
+        name: error?.name,
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack,
+        cause: error?.cause
+      });
+      
       const errorMessage =
         error instanceof McpError || error instanceof Error
           ? error.message
           : "Unknown connection error";
 
-      if (errorMessage.includes("401")) {
-        toast.error("Unauthorized: Check bearer token");
+      // Enhanced error detection and messaging
+      if (errorMessage.includes("401") || (error?.code === 401)) {
+        toast.error("❌ Unauthorized (401): Check bearer token or remove it if not needed");
+      } else if (errorMessage.includes("406") || (error?.code === 406)) {
+        toast.error("❌ Not Acceptable (406): Server rejected request headers - check CORS configuration");
       } else if (
         errorMessage.includes("Not Found") ||
-        (error instanceof Error && error.message.includes("404"))
+        errorMessage.includes("404") ||
+        (error?.code === 404)
       ) {
-        toast.error(`Connection failed: Endpoint or target not found (${errorMessage})`);
-      } else if (errorMessage.includes("Failed to fetch")) {
-        toast.error("Connection failed: Server unreachable or refused connection.");
+        toast.error(`❌ Not Found (404): Endpoint '${selectedRoute?.endpoint || 'unknown'}' not found`);
+      } else if (
+        errorMessage.includes("Failed to fetch") ||
+        errorMessage.includes("NetworkError") ||
+        errorMessage.includes("ERR_NETWORK") ||
+        error?.name === "TypeError"
+      ) {
+        // Enhanced CORS/Network error detection
+        let detailedMessage = "❌ Connection Failed - Possible causes:\n";
+        detailedMessage += "• CORS: Server needs 'Access-Control-Allow-Origin' header\n";
+        detailedMessage += "• Network: Server may be down or unreachable\n";
+        detailedMessage += "• Headers: Missing required headers (Accept, mcp-protocol-version)\n";
+        detailedMessage += `• URL: Check if '${selectedRoute?.endpoint || 'unknown'}/sse' is correct\n`;
+        detailedMessage += "• Config: Verify agentgateway is running with correct config";
+        
+        console.error("CORS/Network error details:", {
+          url: `${selectedRoute?.endpoint || 'unknown'}/sse`,
+          headers: error?.headers,
+          mode: 'cors',
+          credentials: 'omit'
+        });
+        
+        toast.error(detailedMessage, { duration: 8000 });
+      } else if (errorMessage.includes("CORS") || errorMessage.includes("Access-Control")) {
+        toast.error(`❌ CORS Error: ${errorMessage}\n• Add '${window.location.origin}' to CORS allowOrigins\n• Check CORS headers in agentgateway config`, { duration: 6000 });
       } else {
-        toast.error(`Connection failed: ${errorMessage}`);
+        toast.error(`❌ Connection failed: ${errorMessage}`);
       }
       resetFullStateAfterDisconnect();
     } finally {
