@@ -1395,3 +1395,28 @@ export function renderAiForm({ data, onChange }: FormRendererProps) {
     </div>
   );
 }
+
+export function renderA2aForm({ data, onChange }: FormRendererProps) {
+  return (
+    <div className="space-y-6">
+      <div className="bg-muted/50 border rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex-shrink-0 w-6 h-6 bg-primary/10 rounded-full flex items-center justify-center mt-0.5">
+            <span className="text-primary text-xs font-semibold">i</span>
+          </div>
+          <div className="space-y-2">
+            <h4 className="font-medium text-sm">Agent-to-Agent Policy</h4>
+            <p className="text-sm text-muted-foreground">
+              This policy marks traffic as Agent-to-Agent (A2A) to enable A2A processing and telemetry. 
+              No additional configuration is required - simply enabling this policy will activate A2A features for this route.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Use this policy when you want to enable specialized handling for agent-to-agent communications, 
+              including enhanced telemetry, logging, and processing optimizations.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

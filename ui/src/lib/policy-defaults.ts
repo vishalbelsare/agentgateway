@@ -93,6 +93,8 @@ export function getDefaultPolicyData(type: PolicyType) {
         hostOverride: null,
         promptGuard: null,
       };
+    case "a2a":
+      return {};
     default:
       return {};
   }
