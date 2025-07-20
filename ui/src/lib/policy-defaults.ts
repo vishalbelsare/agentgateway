@@ -6,7 +6,7 @@ export function getDefaultPolicyData(type: PolicyType) {
       return {
         issuer: "",
         audiences: [],
-        jwks: "",
+        jwks: { url: "" },
       };
     case "mcpAuthentication":
       return {

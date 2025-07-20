@@ -27,6 +27,29 @@ interface FormRendererProps {
 }
 
 export function renderJwtAuthForm({ data, onChange }: FormRendererProps) {
+  const getCurrentJwksValue = () => {
+    if (typeof data.jwks === "object") {
+      return data.jwks.file || data.jwks.url || "";
+    }
+    return data.jwks || "";
+  };
+
+  const handleJwksChange = (value: string) => {
+    if (!value.trim()) {
+      onChange({ ...data, jwks: { url: "" } });
+      return;
+    }
+    
+    // Detect if it's a URL (starts with http/https) or a file path
+    const isUrl = value.trim().startsWith("http://") || value.trim().startsWith("https://");
+    
+    if (isUrl) {
+      onChange({ ...data, jwks: { url: value } });
+    } else {
+      onChange({ ...data, jwks: { file: value } });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="space-y-3">
@@ -49,10 +72,13 @@ export function renderJwtAuthForm({ data, onChange }: FormRendererProps) {
         <Label htmlFor="jwks">JWKS URL or File Path *</Label>
         <Input
           id="jwks"
-          value={typeof data.jwks === "object" ? data.jwks.file : data.jwks || ""}
-          onChange={(e) => onChange({ ...data, jwks: e.target.value })}
+          value={getCurrentJwksValue()}
+          onChange={(e) => handleJwksChange(e.target.value)}
           placeholder="https://example.auth0.com/.well-known/jwks.json"
         />
+        <p className="text-xs text-muted-foreground">
+          Enter a URL (https://...) for remote JWKS or a file path for local JWKS
+        </p>
       </div>
     </div>
   );
