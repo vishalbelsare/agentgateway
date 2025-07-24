@@ -68,7 +68,7 @@ The agentgateway documentation is available at [agentgateway.dev/docs](https://a
 For instructions on how to contribute to the agentgateway project, see the [CONTRIBUTION.md](CONTRIBUTION.md) file.
 
 ## Community Meetings
-To join a community meeting, add the [agentgateway calendar](https://calendar.google.com/calendar/embed?src=c_3e034a491b0e2c569b5cfe9cf9c8662e9c53cc5e97f27dcb9e6f6c9d6ac4d3ff%40group.calendar.google.com&ctz=America%2FNew_York) to your Google account. Then, you can find event details on the calendar.
+To join a community meeting, add the [agentgateway calendar](https://calendar.google.com/calendar/u/0?cid=Y18zZTAzNGE0OTFiMGUyYzU2OWI1Y2ZlOWNmOWM4N[…]Y2I5ZTZmNmM5ZDZhYzRkM2ZmQGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20) to your Google account. Then, you can find event details on the calendar.
 
 Recordings of the community meetings will be published on our [google drive](https://drive.google.com/drive/folders/138716fESpxLkbd_KkGrUHa6TD7OA2tHs?usp=sharing).
 
