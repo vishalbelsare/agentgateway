@@ -11,6 +11,7 @@ use std::{fmt, io};
 use agent_core::prelude::*;
 use control::caclient::CaClient;
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+use indexmap::IndexMap;
 #[cfg(feature = "schema")]
 pub use schemars::JsonSchema;
 use serde::de::Visitor;
@@ -123,7 +124,7 @@ pub struct RawLoggingFields {
 	#[serde(default)]
 	remove: Vec<String>,
 	#[serde(default)]
-	add: BTreeMap<String, String>,
+	add: IndexMap<String, String>,
 }
 
 #[derive(Clone, Debug)]
