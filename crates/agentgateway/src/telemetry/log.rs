@@ -15,6 +15,7 @@ use http_body::{Body, Frame, SizeHint};
 use itertools::Itertools;
 use serde::{Serialize, Serializer};
 use serde_json::Value;
+use tracing::log::Log;
 use tracing::{Level, event, log, trace};
 
 use crate::cel::{ContextBuilder, Expression};
@@ -363,7 +364,9 @@ impl Drop for DropOnLog {
 			.inc();
 
 		let enable_trace = log.tracer.is_some();
-		if !tracing::enabled!(target: "request", Level::INFO) && !enable_trace {
+		// We will later check it also matches a filter, but filter is slower
+		let maybe_enable_log = agent_core::telemetry::enabled("request", &Level::INFO);
+		if !maybe_enable_log && !enable_trace {
 			return;
 		}
 
@@ -377,7 +380,7 @@ impl Drop for DropOnLog {
 			tracing::warn!("failed to build CEL context");
 			return;
 		};
-		let enable_logs = cel_exec.eval_filter();
+		let enable_logs = maybe_enable_log && cel_exec.eval_filter();
 		if !enable_logs && !enable_trace {
 			return;
 		}

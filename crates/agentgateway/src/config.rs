@@ -13,8 +13,8 @@ use crate::telemetry::log::LoggingFields;
 use crate::telemetry::trc;
 use crate::types::discovery::Identity;
 use crate::{
-	Address, Config, ConfigSource, NestedRawConfig, RawConfig, XDSConfig, cel, client, serdes,
-	telemetry,
+	Address, Config, ConfigSource, NestedRawConfig, RawConfig, ThreadingMode, XDSConfig, cel, client,
+	serdes, telemetry,
 };
 
 pub fn parse_config(contents: String, filename: Option<PathBuf>) -> anyhow::Result<Config> {
@@ -169,6 +169,12 @@ pub fn parse_config(contents: String, filename: Option<PathBuf>) -> anyhow::Resu
 		.transpose()?
 		.unwrap_or(Address::SocketAddr(SocketAddr::new(bind_wildcard, 15021)));
 
+	let threading_mode = if parse::<String>("THREADING_MODE")?.as_deref() == Some("thread_per_core") {
+		ThreadingMode::ThreadPerCore
+	} else {
+		ThreadingMode::default()
+	};
+
 	Ok(crate::Config {
 		network: network.into(),
 		admin_addr,
@@ -179,6 +185,7 @@ pub fn parse_config(contents: String, filename: Option<PathBuf>) -> anyhow::Resu
 		ca,
 		num_worker_threads: parse_worker_threads()?,
 		termination_min_deadline,
+		threading_mode,
 		termination_max_deadline: match termination_max_deadline {
 			Some(period) => period,
 			None => match parse::<u64>("TERMINATION_GRACE_PERIOD_SECONDS")? {
