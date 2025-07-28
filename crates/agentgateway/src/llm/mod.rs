@@ -26,15 +26,15 @@ use crate::telemetry::log::{AsyncLog, RequestLog};
 use crate::types::agent::{BackendName, Target};
 use crate::{client, *};
 
-mod anthropic;
-mod bedrock;
-mod gemini;
-mod openai;
+pub mod anthropic;
+pub mod bedrock;
+pub mod gemini;
+pub mod openai;
 mod pii;
 mod policy;
 #[cfg(test)]
 mod tests;
-mod vertex;
+pub mod vertex;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

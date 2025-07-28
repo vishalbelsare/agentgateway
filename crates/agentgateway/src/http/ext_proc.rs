@@ -24,8 +24,10 @@ use crate::http::ext_proc::proto::{
 };
 use crate::http::{HeaderName, HeaderValue};
 use crate::proxy::ProxyError;
+use crate::proxy::httpproxy::PolicyClient;
 use crate::types::agent;
-use crate::types::agent::{Backend, Target};
+use crate::types::agent::{Backend, SimpleBackendReference, Target};
+use crate::types::discovery::NamespacedHostname;
 use crate::*;
 
 #[allow(warnings)]
@@ -39,25 +41,35 @@ pub struct InferencePoolRouter {
 }
 
 impl InferencePoolRouter {
-	pub fn new(upstream: client::Client, backend: &Backend) -> Self {
+	pub fn new(upstream: PolicyClient, backend: &Backend) -> Self {
 		Self {
 			ext_proc: Self::build_ext_proc(upstream, backend),
 		}
 	}
-	fn build_ext_proc(upstream: client::Client, backend: &Backend) -> Option<ExtProc> {
+	fn build_ext_proc(upstream: PolicyClient, backend: &Backend) -> Option<ExtProc> {
 		let Backend::Service(svc, port) = backend else {
 			return None;
 		};
-		// Hack, assume EPP name. TODO: make this a proper policy
 		if !svc.hostname.ends_with(".inference.cluster.local") {
 			return None;
 		};
-		let target = svc
-			.hostname
-			.split_once(".")
-			.and_then(|ep| Target::try_from((format!("{}-epp", ep.0).as_str(), 9002)).ok())?;
+		// Hack, assume EPP name. TODO: make this a proper policy
+		let parts = svc.hostname.split(".").collect_vec();
+		let target = match parts.as_slice() {
+			&[name, ns, "inference", ..] => {
+				let suffix = parts.iter().skip(3).join(".");
+				SimpleBackendReference::Service {
+					name: NamespacedHostname {
+						namespace: strng::new(ns),
+						hostname: strng::format!("{name}-epp.{ns}.svc.{suffix}"),
+					},
+					port: 9002,
+				}
+			},
+			_ => return None,
+		};
 
-		Some(ExtProc::new(upstream.clone(), target).unwrap())
+		ExtProc::new(upstream.clone(), target).ok()
 	}
 
 	pub async fn mutate_request(
@@ -104,12 +116,10 @@ pub struct ExtProc {
 }
 
 impl ExtProc {
-	pub fn new(client: Client, dest: Target) -> anyhow::Result<ExtProc> {
-		trace!("connecting to {}", dest);
-		let chan = GrpcChannel {
-			target: dest,
-			transport: Transport::Tls(http::backendtls::INSECURE_TRUST.clone()),
-			// transport: Transport::Plaintext,
+	pub fn new(client: PolicyClient, dest: SimpleBackendReference) -> anyhow::Result<ExtProc> {
+		trace!("connecting to {:?}", dest);
+		let chan = GrpcReferenceChannel {
+			target: Arc::new(dest),
 			client,
 		};
 		let mut c = proto::external_processor_client::ExternalProcessorClient::new(chan);
@@ -408,13 +418,12 @@ fn processing_request(data: Request) -> ProcessingRequest {
 }
 
 #[derive(Clone, Debug)]
-pub struct GrpcChannel {
-	pub target: Target,
-	pub transport: Transport,
-	pub client: client::Client,
+pub struct GrpcReferenceChannel {
+	pub target: Arc<SimpleBackendReference>,
+	pub client: PolicyClient,
 }
 
-impl tower::Service<::http::Request<tonic::body::Body>> for GrpcChannel {
+impl tower::Service<::http::Request<tonic::body::Body>> for GrpcReferenceChannel {
 	type Response = http::Response;
 	type Error = anyhow::Error;
 	type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
@@ -426,24 +435,7 @@ impl tower::Service<::http::Request<tonic::body::Body>> for GrpcChannel {
 	fn call(&mut self, mut req: ::http::Request<tonic::body::Body>) -> Self::Future {
 		let client = self.client.clone();
 		let target = self.target.clone();
-		let transport = self.transport.clone();
 		let mut req = req.map(http::Body::new);
-
-		Box::pin(async move {
-			http::modify_req_uri(&mut req, |uri| {
-				uri.authority = Some(Authority::try_from(target.to_string())?);
-				uri.scheme = Some(transport.scheme());
-				Ok(())
-			})?;
-			Ok(
-				client
-					.call(client::Call {
-						req,
-						target,
-						transport,
-					})
-					.await?,
-			)
-		})
+		Box::pin(async move { Ok(client.call_reference(req, &target).await?) })
 	}
 }
