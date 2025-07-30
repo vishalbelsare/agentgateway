@@ -326,7 +326,7 @@ export const createMcpTarget = (target: any) => {
           cmd: target.cmd,
           args: Array.isArray(target.args) ? target.args.filter((arg: string) => arg.trim()) : [],
           env: typeof target.env === 'object' && target.env !== null && !Array.isArray(target.env) ? 
-            Object.fromEntries(Object.entries(target.env).filter(([key, value]) => key.trim() && String(value).trim())) : {},
+            Object.fromEntries(Object.entries(target.env).filter(([key, value]) => typeof key === 'string' && key.trim() && String(value).trim())) : {},
         },
       };
     case "openapi":
