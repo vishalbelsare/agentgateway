@@ -73,6 +73,10 @@ import {
   canDeleteBackend,
 } from "@/lib/backend-utils";
 
+const getEnvAsRecord = (env: unknown): Record<string, string> => {
+  return typeof env === 'object' && env !== null ? env as Record<string, string> : {};
+};
+
 // Icon mapping
 const getBackendIcon = (type: string) => {
   switch (type) {
@@ -824,7 +828,7 @@ const McpBackendForm: React.FC<McpBackendFormProps> = ({
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      const currentEnv = typeof target.env === 'object' && target.env !== null ? target.env : {};
+                      const currentEnv = getEnvAsRecord(target.env);
                       updateMcpTarget(index, "env", { ...currentEnv, "": "" });
                     }}
                   >
@@ -832,14 +836,14 @@ const McpBackendForm: React.FC<McpBackendFormProps> = ({
                     Add Variable
                   </Button>
                 </div>
-                {typeof target.env === 'object' && target.env !== null && Object.keys(target.env).length > 0 ? (
+                {Object.keys(getEnvAsRecord(target.env)).length > 0 ? (
                   <div className="space-y-2">
-                    {Object.entries(target.env).map(([key, value], envIndex) => (
+                    {Object.entries(getEnvAsRecord(target.env)).map(([key, value], envIndex) => (
                       <div key={envIndex} className="flex items-center space-x-2">
                         <Input
                           value={key}
                           onChange={(e) => {
-                            const currentEnv = typeof target.env === 'object' && target.env !== null ? target.env as Record<string, string> : {};
+                            const currentEnv = getEnvAsRecord(target.env);
                             const newEnv = { ...currentEnv };
                             delete newEnv[key];
                             newEnv[e.target.value] = String(value);
@@ -852,7 +856,7 @@ const McpBackendForm: React.FC<McpBackendFormProps> = ({
                         <Input
                           value={String(value)}
                           onChange={(e) => {
-                            const currentEnv = typeof target.env === 'object' && target.env !== null ? target.env as Record<string, string> : {};
+                            const currentEnv = getEnvAsRecord(target.env);
                             const newEnv = { ...currentEnv };
                             newEnv[key] = e.target.value;
                             updateMcpTarget(index, "env", newEnv);
@@ -865,7 +869,7 @@ const McpBackendForm: React.FC<McpBackendFormProps> = ({
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            const currentEnv = typeof target.env === 'object' && target.env !== null ? target.env as Record<string, string> : {};
+                            const currentEnv = getEnvAsRecord(target.env);
                             const newEnv = { ...currentEnv };
                             delete newEnv[key];
                             updateMcpTarget(index, "env", newEnv);
