@@ -75,6 +75,29 @@ message Retry {
   google.protobuf.Duration backoff = 3;
 }
 
+message BackendAuthPolicy {
+  oneof kind {
+    Passthrough passthrough = 1;
+    Key key = 2;
+    Gcp gcp = 3;
+    Aws aws = 4;
+  }
+}
+
+// No fields needed for passthrough authentication.
+message Passthrough {}
+
+// Contains a secret for authentication, e.g. an API key.
+message Key {
+  string secret = 1;
+}
+
+// GCP-specific backend authentication.
+message Gcp {}
+
+// AWS-specific backend authentication.
+message Aws {}
+
 message RouteMatch {
   PathMatch path = 1;
   repeated HeaderMatch headers = 2;
@@ -236,6 +259,7 @@ message PolicySpec {
     A2a a2a = 3;
     InferenceRouting inference_routing = 4;
     BackendTLS backend_tls = 5;
+    BackendAuthPolicy auth = 6;
   }
 }
 

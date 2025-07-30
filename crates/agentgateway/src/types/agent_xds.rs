@@ -83,6 +83,20 @@ impl TryFrom<&proto::agent::RouteBackend> for RouteBackendReference {
 	}
 }
 
+impl TryFrom<proto::agent::BackendAuthPolicy> for BackendAuth {
+	type Error = ProtoError;
+
+	fn try_from(s: proto::agent::BackendAuthPolicy) -> Result<Self, Self::Error> {
+		Ok(match s.kind {
+			Some(proto::agent::backend_auth_policy::Kind::Passthrough(p)) => BackendAuth::Passthrough {},
+			Some(proto::agent::backend_auth_policy::Kind::Key(k)) => BackendAuth::Key(k.secret.into()),
+			Some(proto::agent::backend_auth_policy::Kind::Gcp(g)) => BackendAuth::Gcp {},
+			Some(proto::agent::backend_auth_policy::Kind::Aws(a)) => BackendAuth::Aws {},
+			None => return Err(ProtoError::MissingRequiredField),
+		})
+	}
+}
+
 impl TryFrom<proto::agent::TrafficPolicy> for TrafficPolicy {
 	type Error = ProtoError;
 
@@ -231,14 +245,14 @@ impl TryFrom<&proto::agent::Backend> for Backend {
 
 	fn try_from(s: &proto::agent::Backend) -> Result<Self, Self::Error> {
 		let name = BackendName::from(&s.name);
-		Ok(match &s.kind {
+		let backend = match &s.kind {
 			Some(proto::agent::backend::Kind::Static(s)) => Backend::Opaque(
-				name,
+				name.clone(),
 				Target::try_from((s.host.as_str(), s.port as u16))
 					.map_err(|e| ProtoError::Generic(e.to_string()))?,
 			),
 			Some(proto::agent::backend::Kind::Ai(a)) => Backend::AI(
-				name,
+				name.clone(),
 				AIBackend {
 					host_override: a
 						.r#override
@@ -291,7 +305,7 @@ impl TryFrom<&proto::agent::Backend> for Backend {
 				},
 			),
 			Some(proto::agent::backend::Kind::Mcp(m)) => Backend::MCP(
-				name,
+				name.clone(),
 				McpBackend {
 					targets: m
 						.targets
@@ -303,7 +317,8 @@ impl TryFrom<&proto::agent::Backend> for Backend {
 			_ => {
 				return Err(ProtoError::Generic("unknown backend".to_string()));
 			},
-		})
+		};
+		Ok(backend)
 	}
 }
 
@@ -571,6 +586,9 @@ impl TryFrom<&proto::agent::Policy> for TargetedPolicy {
 						FailureMode::FailOpen => ext_proc::FailureMode::FailOpen,
 					},
 				})
+			},
+			Some(proto::agent::policy_spec::Kind::Auth(auth)) => {
+				Policy::BackendAuth(BackendAuth::try_from(auth.clone())?)
 			},
 			_ => return Err(ProtoError::EnumParse("unknown spec kind".to_string())),
 		};

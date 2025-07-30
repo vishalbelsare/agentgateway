@@ -527,7 +527,7 @@ impl Store {
 		Ok(())
 	}
 	fn insert_xds_backend(&mut self, raw: XdsBackend) -> anyhow::Result<()> {
-		let backend: (Backend) = (&raw).try_into()?;
+		let backend: Backend = (&raw).try_into()?;
 		self.insert_backend(backend);
 		Ok(())
 	}
