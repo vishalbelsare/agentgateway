@@ -798,7 +798,7 @@ const McpBackendForm: React.FC<McpBackendFormProps> = ({
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            const newArgs = Array.isArray(target.args) ? target.args.filter((_: string, i: number) => i !== argIndex) : [];
+                            const newArgs = Array.isArray(target.args) ? target.args.filter((_, i: number) => i !== argIndex) : [];
                             updateMcpTarget(index, "args", newArgs);
                           }}
                           className="text-destructive hover:text-destructive"
