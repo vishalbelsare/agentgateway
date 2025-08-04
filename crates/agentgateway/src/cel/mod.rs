@@ -11,7 +11,7 @@ use axum_core::body::Body;
 use bytes::Bytes;
 use cel_interpreter::extractors::{Arguments, This};
 use cel_interpreter::objects::{Key, Map, TryIntoValue, ValueType};
-use cel_interpreter::{Context, ExecutionError, FunctionContext, Program, ResolveResult, Value};
+use cel_interpreter::{Context, ExecutionError, FunctionContext, Program, ResolveResult};
 use cel_parser::{Expression as CelExpression, ParseError};
 use http::Request;
 use once_cell::sync::Lazy;
@@ -25,6 +25,15 @@ use crate::serdes::*;
 use crate::telemetry::log::CelLogging;
 use crate::transport::stream::{TCPConnectionInfo, TLSConnectionInfo};
 use crate::{json, llm};
+
+pub use cel_interpreter::Value;
+pub use functions::FLATTEN_LIST;
+pub use functions::FLATTEN_LIST_RECURSIVE;
+pub use functions::FLATTEN_MAP;
+pub use functions::FLATTEN_MAP_RECURSIVE;
+
+mod functions;
+mod strings;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -51,6 +60,17 @@ pub const LLM_COMPLETION_ATTRIBUTE: &str = "llm.completion";
 pub const RESPONSE_ATTRIBUTE: &str = "response";
 pub const JWT_ATTRIBUTE: &str = "jwt";
 pub const MCP_ATTRIBUTE: &str = "mcp";
+pub const ALL_ATTRIBUTES: &[&str] = &[
+	SOURCE_ATTRIBUTE,
+	REQUEST_ATTRIBUTE,
+	REQUEST_BODY_ATTRIBUTE,
+	LLM_ATTRIBUTE,
+	LLM_PROMPT_ATTRIBUTE,
+	LLM_COMPLETION_ATTRIBUTE,
+	RESPONSE_ATTRIBUTE,
+	JWT_ATTRIBUTE,
+	MCP_ATTRIBUTE,
+];
 
 pub struct Expression {
 	attributes: HashSet<String>,
@@ -77,8 +97,7 @@ impl Debug for Expression {
 
 fn root_context() -> Arc<Context<'static>> {
 	let mut ctx = Context::default();
-	ctx.add_function("json", fns::json_parse);
-	ctx.add_function("with", fns::with);
+	functions::insert_all(&mut ctx);
 	Arc::new(ctx)
 }
 
@@ -166,6 +185,7 @@ impl ContextBuilder {
 			request_model: info.request_model.clone(),
 			provider: info.provider.clone(),
 			input_tokens: info.input_tokens,
+			params: info.params.clone(),
 
 			response_model: None,
 			output_tokens: None,
@@ -256,6 +276,7 @@ impl Expression {
 		let mut props = Vec::with_capacity(5);
 		properties(&expression, &mut props, &mut Vec::default());
 
+		let include_all = expression.references().functions().contains(&"variables");
 		// For now we only look at the first level. We could be more precise
 		let mut attributes: HashSet<String> = props
 			.into_iter()
@@ -267,6 +288,11 @@ impl Expression {
 				_ => None,
 			})
 			.collect();
+		if include_all {
+			ALL_ATTRIBUTES.iter().for_each(|attr| {
+				attributes.insert(attr.to_string());
+			});
+		}
 
 		Ok(Self {
 			attributes,
@@ -341,6 +367,7 @@ pub struct LLMContext {
 	prompt: Option<Vec<llm::SimpleChatCompletionMessage>>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	completion: Option<Vec<String>>,
+	params: llm::LLMRequestParams,
 }
 
 fn create_context<'a>() -> Context<'a> {
@@ -475,38 +502,6 @@ fn opt_to_value<S: Serialize>(v: &Option<S>) -> Result<Value, Error> {
 
 fn to_value(v: impl Serialize) -> Result<Value, Error> {
 	cel_interpreter::to_value(v).map_err(|e| Error::Variable(e.to_string()))
-}
-
-mod fns {
-	use std::sync::Arc;
-
-	use cel_interpreter::extractors::{Identifier, This};
-	use cel_interpreter::objects::ValueType;
-	use cel_interpreter::{ExecutionError, FunctionContext, ResolveResult, Value};
-	use cel_parser::Expression;
-
-	use crate::cel::to_value;
-
-	pub fn with(
-		ftx: &FunctionContext,
-		This(this): This<Value>,
-		ident: Identifier,
-		expr: Expression,
-	) -> ResolveResult {
-		let mut ptx = ftx.ptx.new_inner_scope();
-		ptx.add_variable_from_value(&ident, this);
-		ptx.resolve(&expr)
-	}
-
-	pub fn json_parse(ftx: &FunctionContext, v: Value) -> ResolveResult {
-		let sv = match v {
-			Value::String(b) => serde_json::from_str(b.as_str()),
-			Value::Bytes(b) => serde_json::from_slice(b.as_ref()),
-			_ => return Err(ftx.error("invalid type")),
-		};
-		let sv: serde_json::Value = sv.map_err(|e| ftx.error(e))?;
-		to_value(sv).map_err(|e| ftx.error(e))
-	}
 }
 
 #[cfg(any(test, feature = "internal_benches"))]
