@@ -1,15 +1,16 @@
-use crate::cel;
-use crate::cel::to_value;
-use base64::Engine;
-use cel_interpreter::extractors::{Identifier, This};
-use cel_interpreter::objects::{Map, ValueType};
-use cel_interpreter::{Context, ExecutionError, FunctionContext, ResolveResult, Value};
-use cel_parser::Expression;
-use once_cell::sync::Lazy;
-use opentelemetry::Key;
 use std::collections::HashMap;
 use std::string::ToString;
 use std::sync::Arc;
+
+use ::cel::extractors::{Identifier, This};
+use ::cel::objects::{Key, Map, ValueType};
+use ::cel::parser::Expression;
+use ::cel::{Context, ExecutionError, FunctionContext, ResolveResult, Value};
+use base64::Engine;
+use once_cell::sync::Lazy;
+
+use crate::cel;
+use crate::cel::to_value;
 
 pub fn insert_all(ctx: &mut Context<'_>) {
 	use super::strings;
@@ -65,16 +66,14 @@ fn with(
 	ptx.resolve(&expr)
 }
 
-pub static FLATTEN_LIST: Lazy<cel_interpreter::objects::Key> =
-	Lazy::new(|| cel_interpreter::objects::Key::String(Arc::new("$_meta_flatten_list".to_string())));
-pub static FLATTEN_LIST_RECURSIVE: Lazy<cel_interpreter::objects::Key> = Lazy::new(|| {
-	cel_interpreter::objects::Key::String(Arc::new("$_meta_flatten_list_recursive".to_string()))
-});
-pub static FLATTEN_MAP: Lazy<cel_interpreter::objects::Key> =
-	Lazy::new(|| cel_interpreter::objects::Key::String(Arc::new("$_meta_flatten_map".to_string())));
-pub static FLATTEN_MAP_RECURSIVE: Lazy<cel_interpreter::objects::Key> = Lazy::new(|| {
-	cel_interpreter::objects::Key::String(Arc::new("$_meta_flatten_map_recursive".to_string()))
-});
+pub static FLATTEN_LIST: Lazy<Key> =
+	Lazy::new(|| Key::String(Arc::new("$_meta_flatten_list".to_string())));
+pub static FLATTEN_LIST_RECURSIVE: Lazy<Key> =
+	Lazy::new(|| Key::String(Arc::new("$_meta_flatten_list_recursive".to_string())));
+pub static FLATTEN_MAP: Lazy<Key> =
+	Lazy::new(|| Key::String(Arc::new("$_meta_flatten_map".to_string())));
+pub static FLATTEN_MAP_RECURSIVE: Lazy<Key> =
+	Lazy::new(|| Key::String(Arc::new("$_meta_flatten_map_recursive".to_string())));
 
 fn flatten(ftx: &FunctionContext, v: Value) -> ResolveResult {
 	let res = match v {
@@ -147,7 +146,7 @@ pub fn map_values(
 				let value = ptx.resolve(&expr)?;
 				res.insert(key.clone(), value);
 			}
-			Value::Map(cel_interpreter::objects::Map { map: Arc::new(res) })
+			Value::Map(Map { map: Arc::new(res) })
 		},
 		_ => return Err(this.error_expected_type(ValueType::Map)),
 	}
