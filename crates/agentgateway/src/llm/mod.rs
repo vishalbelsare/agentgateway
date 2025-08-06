@@ -156,7 +156,7 @@ impl AIProvider {
 			},
 		}
 	}
-	pub fn setup_request(&self, req: &mut Request) -> anyhow::Result<()> {
+	pub fn setup_request(&self, req: &mut Request, llm_request: &LLMRequest) -> anyhow::Result<()> {
 		match self {
 			AIProvider::OpenAI(_) => http::modify_req(req, |req| {
 				http::modify_uri(req, |uri| {
@@ -208,13 +208,17 @@ impl AIProvider {
 			},
 			AIProvider::Bedrock(provider) => {
 				// For Bedrock, use a default model path - the actual model will be specified in the request body
-				let path = provider.get_path_for_model();
+				let path = provider.get_path_for_model(llm_request.request_model.as_str());
 				http::modify_req(req, |req| {
 					http::modify_uri(req, |uri| {
 						uri.path_and_query = Some(PathAndQuery::from_str(&path)?);
 						uri.authority = Some(Authority::from_str(&provider.get_host())?);
 						Ok(())
 					})?;
+					// Store the region in request extensions so AWS signing can use it
+					req.extensions.insert(bedrock::AwsRegion {
+						region: provider.region.as_str().to_string(),
+					});
 					Ok(())
 				})
 			},
@@ -296,7 +300,7 @@ impl AIProvider {
 		};
 		// 3 cases: success, error properly handled, and unexpected error we need to synthesize
 		let openai_response = self
-			.process_response_status(parts.status, &bytes)
+			.process_response_status(&req, parts.status, &bytes)
 			.await
 			.unwrap_or_else(|err| {
 				Err(ChatCompletionErrorResponse {
@@ -362,6 +366,7 @@ impl AIProvider {
 
 	async fn process_response_status(
 		&self,
+		req: &LLMRequest,
 		status: StatusCode,
 		bytes: &Bytes,
 	) -> Result<Result<ChatCompletionResponse, ChatCompletionErrorResponse>, AIError> {
@@ -371,7 +376,7 @@ impl AIProvider {
 				AIProvider::Gemini(p) => p.process_response(bytes).await?,
 				AIProvider::Vertex(p) => p.process_response(bytes).await?,
 				AIProvider::Anthropic(p) => p.process_response(bytes).await?,
-				AIProvider::Bedrock(p) => p.process_response(bytes).await?,
+				AIProvider::Bedrock(p) => p.process_response(req.request_model.clone(), bytes).await?,
 			};
 			Ok(Ok(openai_response))
 		} else {

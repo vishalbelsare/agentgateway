@@ -3,18 +3,29 @@ use agent_core::strng;
 use bytes::Bytes;
 use chrono;
 use serde::Serialize;
+use tracing::trace;
 
 use crate::llm::bedrock::types::{ConverseErrorResponse, ConverseRequest, ConverseResponse};
 use crate::llm::universal::ChatCompletionRequest;
 use crate::llm::{AIError, universal};
 use crate::*;
 
+#[derive(Debug, Clone)]
+pub struct AwsRegion {
+	pub region: String,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub struct Provider {
-	pub model: Strng,  // TODO: allow getting from req
-	pub region: Strng, // TODO: allow defaulting
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub model: Option<Strng>, // Optional: model override for Bedrock API path
+	pub region: Strng, // Required: AWS region
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub guardrail_identifier: Option<Strng>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub guardrail_version: Option<Strng>,
 }
 
 impl super::Provider for Provider {
@@ -26,19 +37,25 @@ impl Provider {
 		&self,
 		mut req: universal::ChatCompletionRequest,
 	) -> Result<ConverseRequest, AIError> {
-		req.model = self.model.to_string();
-		let bedrock_request = translate_request(req);
+		// Use provider's model if configured, otherwise keep the request model
+		if let Some(provider_model) = &self.model {
+			req.model = provider_model.to_string();
+		}
+		let bedrock_request = translate_request(req, self);
 
 		Ok(bedrock_request)
 	}
 
 	pub async fn process_response(
 		&self,
+		model: Strng,
 		bytes: &Bytes,
 	) -> Result<universal::ChatCompletionResponse, AIError> {
 		let resp =
 			serde_json::from_slice::<ConverseResponse>(bytes).map_err(AIError::ResponseParsing)?;
-		translate_response(resp, &self.model)
+
+		// Bedrock response doesn't contain the model, so we pass through the model from the request into the response
+		translate_response(resp, model.as_str())
 	}
 
 	pub async fn process_error(
@@ -50,9 +67,10 @@ impl Provider {
 		translate_error(resp)
 	}
 
-	pub fn get_path_for_model(&self) -> Strng {
-		strng::format!("/model/{}/converse", self.model)
+	pub fn get_path_for_model(&self, model: &str) -> Strng {
+		strng::format!("/model/{}/converse", model)
 	}
+
 	pub fn get_host(&self) -> Strng {
 		strng::format!("bedrock-runtime.{}.amazonaws.com", self.region)
 	}
@@ -75,7 +93,7 @@ pub(super) fn translate_error(
 
 pub(super) fn translate_response(
 	resp: ConverseResponse,
-	model: &Strng,
+	model: &str,
 ) -> Result<universal::ChatCompletionResponse, AIError> {
 	// Get the output content from the response
 	let output = resp.output.ok_or(AIError::IncompleteResponse)?;
@@ -137,6 +155,13 @@ pub(super) fn translate_response(
 	// Generate a unique ID since it's not provided in the response
 	let id = format!("bedrock-{}", chrono::Utc::now().timestamp_millis());
 
+	// Log guardrail trace information if present
+	if let Some(trace) = &resp.trace {
+		if let Some(guardrail_trace) = &trace.guardrail {
+			trace!("Bedrock guardrail trace: {:?}", guardrail_trace);
+		}
+	}
+
 	Ok(universal::ChatCompletionResponse {
 		id: Some(id),
 		object: "chat.completion".to_string(),
@@ -148,7 +173,10 @@ pub(super) fn translate_response(
 	})
 }
 
-pub(super) fn translate_request(req: ChatCompletionRequest) -> types::ConverseRequest {
+pub(super) fn translate_request(
+	req: ChatCompletionRequest,
+	provider: &Provider,
+) -> types::ConverseRequest {
 	// Bedrock has system prompts in a separate field. Join them
 	let system = req
 		.messages
@@ -213,6 +241,19 @@ pub(super) fn translate_request(req: ChatCompletionRequest) -> types::ConverseRe
 		anthropic_version: None, // Not used for Bedrock
 	};
 
+	// Build guardrail configuration if specified
+	let guardrail_config = if let (Some(identifier), Some(version)) =
+		(&provider.guardrail_identifier, &provider.guardrail_version)
+	{
+		Some(types::GuardrailConfiguration {
+			guardrail_identifier: identifier.to_string(),
+			guardrail_version: version.to_string(),
+			trace: Some("enabled".to_string()),
+		})
+	} else {
+		None
+	};
+
 	types::ConverseRequest {
 		model_id: req.model,
 		messages,
@@ -222,8 +263,8 @@ pub(super) fn translate_request(req: ChatCompletionRequest) -> types::ConverseRe
 			Some(vec![types::SystemContentBlock::Text { text: system }])
 		},
 		inference_config: Some(inference_config),
-		tool_config: None,      // TODO: Add tool support
-		guardrail_config: None, // TODO: Add guardrail support
+		tool_config: None, // TODO: Add tool support
+		guardrail_config,
 		additional_model_request_fields: None,
 		prompt_variables: None,
 		additional_model_response_field_paths: None,
@@ -338,7 +379,15 @@ pub(super) mod types {
 
 	#[derive(Clone, Serialize, Debug, PartialEq)]
 	pub struct GuardrailConfiguration {
-		// TODO: Implement guardrail configuration
+		/// The unique identifier of the guardrail
+		#[serde(rename = "guardrailIdentifier")]
+		pub guardrail_identifier: String,
+		/// The version of the guardrail
+		#[serde(rename = "guardrailVersion")]
+		pub guardrail_version: String,
+		/// Whether to enable trace output from the guardrail
+		#[serde(rename = "trace", skip_serializing_if = "Option::is_none")]
+		pub trace: Option<String>,
 	}
 
 	#[derive(Clone, Serialize, Debug, PartialEq)]
@@ -410,9 +459,11 @@ pub(super) mod types {
 	}
 
 	/// Trace information for Guardrail behavior
-	#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+	#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 	pub struct ConverseTrace {
-		// TODO: Add specific trace fields as needed
+		/// Guardrail trace information
+		#[serde(rename = "guardrail", skip_serializing_if = "Option::is_none")]
+		pub guardrail: Option<serde_json::Value>,
 	}
 
 	/// Reason for stopping the response generation.
