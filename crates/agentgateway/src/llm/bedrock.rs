@@ -2,10 +2,13 @@ use agent_core::prelude::Strng;
 use agent_core::strng;
 use bytes::Bytes;
 use chrono;
+use itertools::Itertools;
 use serde::Serialize;
 use tracing::trace;
 
-use crate::llm::bedrock::types::{ConverseErrorResponse, ConverseRequest, ConverseResponse};
+use crate::llm::bedrock::types::{
+	ContentBlock, ConverseErrorResponse, ConverseRequest, ConverseResponse, StopReason,
+};
 use crate::llm::universal::ChatCompletionRequest;
 use crate::llm::{AIError, universal};
 use crate::*;
@@ -35,7 +38,7 @@ impl super::Provider for Provider {
 impl Provider {
 	pub async fn process_request(
 		&self,
-		mut req: universal::ChatCompletionRequest,
+		mut req: ChatCompletionRequest,
 	) -> Result<ConverseRequest, AIError> {
 		// Use provider's model if configured, otherwise keep the request model
 		if let Some(provider_model) = &self.model {
@@ -103,38 +106,62 @@ pub(super) fn translate_response(
 		types::ConverseOutput::Message(msg) => msg,
 		types::ConverseOutput::Unknown => return Err(AIError::IncompleteResponse),
 	};
-
+	// Bedrock has a vec of possible content types, while openai allows 1 text content and many tool calls
+	// Assume the bedrock response has only one text
 	// Convert Bedrock content blocks to OpenAI message content
-	let choices = message
-		.content
-		.iter()
-		.filter_map(|block| {
-			let text = match block {
-				types::ContentBlock::Text(text) => Some(text.clone()),
-				types::ContentBlock::Image { .. } => return None, // Skip images in response for now
-			};
-			let message = universal::ChatCompletionMessageForResponse {
-				role: universal::MessageRole::assistant,
-				content: text,
-				reasoning_content: None,
-				name: None,
-				tool_calls: None,
-			};
-			let finish_reason = Some(match resp.stop_reason {
-				types::StopReason::EndTurn => universal::FinishReason::stop,
-				types::StopReason::MaxTokens => universal::FinishReason::length,
-				types::StopReason::StopSequence => universal::FinishReason::stop,
-			});
-			// Only one choice for Bedrock
-			let choice = universal::ChatCompletionChoice {
-				index: 0,
-				message,
-				finish_reason,
-				finish_details: None,
-			};
-			Some(choice)
-		})
-		.collect::<Vec<_>>();
+	let mut tool_calls: Vec<universal::ToolCall> = Vec::new();
+	let mut content = None;
+	for block in &message.content {
+		match block {
+			types::ContentBlock::Text(text) => {
+				content = Some(text.clone());
+			},
+			types::ContentBlock::Image { .. } => continue, // Skip images in response for now
+			ContentBlock::ToolResult(_) => {
+				// There should not be a ToolResult in the response, only in the request
+				continue;
+			},
+			ContentBlock::ToolUse(tu) => {
+				let Some(args) = serde_json::to_string(&tu.input).ok() else {
+					continue;
+				};
+				tool_calls.push(universal::ToolCall {
+					id: tu.tool_use_id.clone(),
+					r#type: universal::ToolType::Function,
+					function: universal::ToolCallFunction {
+						name: tu.name.clone(),
+						arguments: args,
+					},
+				});
+			}, // TODO: guard content, reasoning
+		};
+	}
+
+	let message = universal::ChatCompletionMessageForResponse {
+		role: universal::MessageRole::assistant,
+		content,
+		tool_calls: if tool_calls.is_empty() {
+			None
+		} else {
+			Some(tool_calls)
+		},
+	};
+	let finish_reason = Some(match resp.stop_reason {
+		StopReason::EndTurn => universal::FinishReason::stop,
+		StopReason::MaxTokens => universal::FinishReason::length,
+		StopReason::StopSequence => universal::FinishReason::stop,
+		StopReason::ContentFiltered => universal::FinishReason::content_filter,
+		StopReason::GuardrailIntervened => universal::FinishReason::stop,
+		StopReason::ToolUse => universal::FinishReason::tool_calls,
+	});
+	// Only one choice for Bedrock
+	let choice = universal::ChatCompletionChoice {
+		index: 0,
+		message,
+		finish_reason,
+		finish_details: None,
+	};
+	let choices = vec![choice];
 
 	// Convert usage from Bedrock format to OpenAI format
 	let usage = if let Some(token_usage) = resp.usage {
@@ -176,7 +203,7 @@ pub(super) fn translate_response(
 pub(super) fn translate_request(
 	req: ChatCompletionRequest,
 	provider: &Provider,
-) -> types::ConverseRequest {
+) -> ConverseRequest {
 	// Bedrock has system prompts in a separate field. Join them
 	let system = req
 		.messages
@@ -254,6 +281,36 @@ pub(super) fn translate_request(
 		None
 	};
 
+	let metadata = req
+		.user
+		.map(|user| HashMap::from([("user_id".to_string(), user)]));
+
+	let tool_choice = match req.tool_choice {
+		Some(universal::ToolChoiceType::ToolChoice { r#type, function }) => {
+			Some(types::ToolChoice::Tool {
+				name: function.name,
+			})
+		},
+		Some(universal::ToolChoiceType::Auto) => Some(types::ToolChoice::Auto),
+		Some(universal::ToolChoiceType::Required) => Some(types::ToolChoice::Any),
+		Some(universal::ToolChoiceType::None) => None,
+		None => None,
+	};
+	let tools = req.tools.map(|tools| {
+		tools
+			.into_iter()
+			.map(|tool| {
+				let tool_spec = types::ToolSpecification {
+					name: tool.function.name,
+					description: tool.function.description,
+					input_schema: tool.function.parameters.map(types::ToolInputSchema::Json),
+				};
+
+				types::Tool::ToolSpec(tool_spec)
+			})
+			.collect_vec()
+	});
+	let tool_config = tools.map(|tools| types::ToolConfiguration { tools, tool_choice });
 	types::ConverseRequest {
 		model_id: req.model,
 		messages,
@@ -263,12 +320,12 @@ pub(super) fn translate_request(
 			Some(vec![types::SystemContentBlock::Text { text: system }])
 		},
 		inference_config: Some(inference_config),
-		tool_config: None, // TODO: Add tool support
+		tool_config,
 		guardrail_config,
 		additional_model_request_fields: None,
 		prompt_variables: None,
 		additional_model_response_field_paths: None,
-		request_metadata: None,
+		request_metadata: metadata,
 		performance_config: None,
 	}
 }
@@ -278,16 +335,16 @@ pub(super) mod types {
 
 	use serde::{Deserialize, Serialize};
 
-	#[derive(Copy, Clone, Deserialize, Serialize, Debug, PartialEq, Eq, Default)]
-	#[serde(rename_all = "snake_case")]
+	#[derive(Copy, Clone, Deserialize, Serialize, Debug, Default)]
+	#[serde(rename_all = "camelCase")]
 	pub enum Role {
 		#[default]
 		User,
 		Assistant,
 	}
 
-	#[derive(Clone, Deserialize, Serialize, Debug, PartialEq, Eq)]
-	#[serde(rename_all = "snake_case")]
+	#[derive(Clone, Deserialize, Serialize, Debug)]
+	#[serde(rename_all = "camelCase")]
 	pub enum ContentBlock {
 		Text(String),
 		Image {
@@ -295,17 +352,55 @@ pub(super) mod types {
 			media_type: String,
 			data: String,
 		},
+		ToolResult(ToolResultBlock),
+		ToolUse(ToolUseBlock),
+	}
+	#[derive(Clone, Deserialize, Serialize, Debug)]
+	#[serde(rename_all = "camelCase")]
+	pub struct ToolResultBlock {
+		/// <p>The ID of the tool request that this is the result for.</p>
+		pub tool_use_id: ::std::string::String,
+		/// <p>The content for tool result content block.</p>
+		pub content: ::std::vec::Vec<ToolResultContentBlock>,
+		/// <p>The status for the tool result content block.</p><note>
+		/// <p>This field is only supported Anthropic Claude 3 models.</p>
+		/// </note>
+		pub status: ::std::option::Option<ToolResultStatus>,
 	}
 
-	#[derive(Clone, Deserialize, Serialize, Debug, PartialEq, Eq)]
-	#[serde(rename_all = "snake_case")]
+	#[derive(Clone, Deserialize, Serialize, Debug)]
+	#[serde(rename_all = "camelCase")]
+	pub enum ToolResultStatus {
+		Error,
+		Success,
+	}
+
+	#[derive(Clone, Deserialize, Serialize, Debug)]
+	#[serde(rename_all = "camelCase")]
+	pub struct ToolUseBlock {
+		/// <p>The ID for the tool request.</p>
+		pub tool_use_id: ::std::string::String,
+		/// <p>The name of the tool that the model wants to use.</p>
+		pub name: ::std::string::String,
+		/// <p>The input to pass to the tool.</p>
+		pub input: serde_json::Value,
+	}
+
+	#[derive(Clone, Deserialize, Serialize, Debug)]
+	#[serde(rename_all = "camelCase")]
+	pub enum ToolResultContentBlock {
+		/// <p>A tool result that is text.</p>
+		Text(::std::string::String),
+	}
+	#[derive(Clone, Deserialize, Serialize, Debug)]
+	#[serde(rename_all = "camelCase")]
 	#[serde(untagged)]
 	pub enum SystemContentBlock {
 		Text { text: String },
 	}
 
-	#[derive(Clone, Deserialize, Serialize, Debug, PartialEq, Eq)]
-	#[serde(rename_all = "snake_case")]
+	#[derive(Clone, Deserialize, Serialize, Debug)]
+	#[serde(rename_all = "camelCase")]
 	pub struct Message {
 		pub role: Role,
 		pub content: Vec<ContentBlock>,
@@ -330,7 +425,7 @@ pub(super) mod types {
 		pub anthropic_version: Option<String>,
 	}
 
-	#[derive(Clone, Serialize, Debug, PartialEq)]
+	#[derive(Clone, Serialize, Debug)]
 	pub struct ConverseRequest {
 		/// Specifies the model or throughput with which to run inference.
 		#[serde(rename = "modelId")]
@@ -372,9 +467,44 @@ pub(super) mod types {
 		pub performance_config: Option<PerformanceConfiguration>,
 	}
 
-	#[derive(Clone, Serialize, Debug, PartialEq)]
+	#[derive(Clone, Serialize, Debug)]
 	pub struct ToolConfiguration {
-		// TODO: Implement tool configuration
+		/// An array of tools that you want to pass to a model.
+		pub tools: Vec<Tool>,
+		/// If supported by model, forces the model to request a tool.
+		pub tool_choice: Option<ToolChoice>,
+	}
+
+	#[derive(Clone, std::fmt::Debug, ::serde::Serialize)]
+	#[serde(rename_all = "camelCase")]
+	pub enum Tool {
+		/// CachePoint to include in the tool configuration.
+		CachePoint(CachePointBlock),
+		/// The specification for the tool.
+		ToolSpec(ToolSpecification),
+	}
+
+	#[derive(Clone, std::fmt::Debug, ::serde::Serialize, ::serde::Deserialize)]
+	#[serde(rename_all = "camelCase")]
+	pub struct CachePointBlock {
+		/// Specifies the type of cache point within the CachePointBlock.
+		pub r#type: CachePointType,
+	}
+
+	#[derive(
+		Clone,
+		Eq,
+		Ord,
+		PartialEq,
+		PartialOrd,
+		std::fmt::Debug,
+		std::hash::Hash,
+		::serde::Serialize,
+		::serde::Deserialize,
+	)]
+	#[serde(rename_all = "camelCase")]
+	pub enum CachePointType {
+		Default,
 	}
 
 	#[derive(Clone, Serialize, Debug, PartialEq)]
@@ -395,13 +525,13 @@ pub(super) mod types {
 		// TODO: Implement prompt variable values
 	}
 
-	#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+	#[derive(Clone, Serialize, Deserialize, Debug)]
 	pub struct PerformanceConfiguration {
 		// TODO: Implement performance configuration
 	}
 
 	/// The actual response from the Bedrock Converse API (matches AWS SDK ConverseOutput)
-	#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+	#[derive(Debug, Deserialize, Clone)]
 	pub struct ConverseResponse {
 		/// The result from the call to Converse
 		pub output: Option<ConverseOutput>,
@@ -422,14 +552,14 @@ pub(super) mod types {
 		pub performance_config: Option<PerformanceConfiguration>,
 	}
 
-	#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+	#[derive(Debug, Deserialize, Clone)]
 	pub struct ConverseErrorResponse {
 		pub message: String,
 	}
 
 	/// The actual content output from the model
-	#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
-	#[serde(rename_all = "snake_case")]
+	#[derive(Debug, Deserialize, Clone)]
+	#[serde(rename_all = "camelCase")]
 	pub enum ConverseOutput {
 		Message(Message),
 		#[serde(other)]
@@ -437,7 +567,7 @@ pub(super) mod types {
 	}
 
 	/// Token usage information
-	#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+	#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 	pub struct TokenUsage {
 		/// The number of input tokens which were used
 		#[serde(rename = "inputTokens")]
@@ -451,7 +581,7 @@ pub(super) mod types {
 	}
 
 	/// Metrics for the Converse call
-	#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+	#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 	pub struct ConverseMetrics {
 		/// Latency in milliseconds
 		#[serde(rename = "latencyMs")]
@@ -459,7 +589,7 @@ pub(super) mod types {
 	}
 
 	/// Trace information for Guardrail behavior
-	#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+	#[derive(Clone, Debug, Serialize, Deserialize)]
 	pub struct ConverseTrace {
 		/// Guardrail trace information
 		#[serde(rename = "guardrail", skip_serializing_if = "Option::is_none")]
@@ -467,14 +597,51 @@ pub(super) mod types {
 	}
 
 	/// Reason for stopping the response generation.
-	#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+	#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 	#[serde(rename_all = "snake_case")]
 	pub enum StopReason {
-		/// The model reached a natural stopping point.
+		ContentFiltered,
 		EndTurn,
-		/// The requested max_tokens or the model's maximum was exceeded.
+		GuardrailIntervened,
 		MaxTokens,
-		/// One of the provided custom stop_sequences was generated.
 		StopSequence,
+		ToolUse,
+	}
+
+	#[derive(Clone, Debug, Serialize)]
+	#[serde(rename_all = "camelCase")]
+	pub enum ToolChoice {
+		/// The model must request at least one tool (no text is generated).
+		Any,
+		/// (Default). The Model automatically decides if a tool should be called or whether to generate text instead.
+		Auto,
+		/// The Model must request the specified tool. Only supported by Anthropic Claude 3 models.
+		Tool { name: String },
+		/// The `Unknown` variant represents cases where new union variant was received. Consider upgrading the SDK to the latest available version.
+		/// An unknown enum variant
+		///
+		/// _Note: If you encounter this error, consider upgrading your SDK to the latest version._
+		/// The `Unknown` variant represents cases where the server sent a value that wasn't recognized
+		/// by the client. This can happen when the server adds new functionality, but the client has not been updated.
+		/// To investigate this, consider turning on debug logging to print the raw HTTP response.
+		#[non_exhaustive]
+		Unknown,
+	}
+
+	#[derive(Clone, std::fmt::Debug, ::serde::Serialize)]
+	#[serde(rename_all = "camelCase")]
+	pub struct ToolSpecification {
+		/// The name for the tool.
+		pub name: String,
+		/// The description for the tool.
+		pub description: Option<String>,
+		/// The input schema for the tool in JSON format.
+		pub input_schema: Option<ToolInputSchema>,
+	}
+
+	#[derive(Clone, Debug, Serialize)]
+	#[serde(rename_all = "camelCase")]
+	pub enum ToolInputSchema {
+		Json(serde_json::Value),
 	}
 }

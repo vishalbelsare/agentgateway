@@ -654,18 +654,22 @@ mod universal {
 	use std::collections::HashMap;
 	use std::fmt;
 
+	use crate::llm::universal;
 	use serde::de::{self, MapAccess, SeqAccess, Visitor};
 	use serde::ser::SerializeMap;
 	use serde::{Deserialize, Deserializer, Serialize, Serializer};
 	use serde_json::Value;
 
 	#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-	#[serde(rename_all = "snake_case")]
+	#[serde(rename_all = "snake_case", untagged)]
 	pub enum ToolChoiceType {
 		None,
 		Auto,
 		Required,
-		ToolChoice { tool: Tool },
+		ToolChoice {
+			r#type: ToolType,
+			function: Function,
+		},
 	}
 
 	#[derive(Debug, Serialize, Deserialize, Clone)]
@@ -856,10 +860,6 @@ mod universal {
 		#[serde(skip_serializing_if = "Option::is_none")]
 		pub content: Option<String>,
 		#[serde(skip_serializing_if = "Option::is_none")]
-		pub reasoning_content: Option<String>,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		pub name: Option<String>,
-		#[serde(skip_serializing_if = "Option::is_none")]
 		pub tool_calls: Option<Vec<ToolCall>>,
 	}
 
@@ -952,16 +952,14 @@ mod universal {
 	#[derive(Debug, Deserialize, Serialize, Clone)]
 	pub struct ToolCall {
 		pub id: String,
-		pub r#type: String,
+		pub r#type: ToolType,
 		pub function: ToolCallFunction,
 	}
 
 	#[derive(Debug, Deserialize, Serialize, Clone)]
 	pub struct ToolCallFunction {
-		#[serde(skip_serializing_if = "Option::is_none")]
-		pub name: Option<String>,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		pub arguments: Option<String>,
+		pub name: String,
+		pub arguments: String,
 	}
 
 	fn serialize_tool_choice<S>(
@@ -975,10 +973,10 @@ mod universal {
 			Some(ToolChoiceType::None) => serializer.serialize_str("none"),
 			Some(ToolChoiceType::Auto) => serializer.serialize_str("auto"),
 			Some(ToolChoiceType::Required) => serializer.serialize_str("required"),
-			Some(ToolChoiceType::ToolChoice { tool }) => {
+			Some(ToolChoiceType::ToolChoice { r#type, function }) => {
 				let mut map = serializer.serialize_map(Some(2))?;
-				map.serialize_entry("type", &tool.r#type)?;
-				map.serialize_entry("function", &tool.function)?;
+				map.serialize_entry("type", &r#type)?;
+				map.serialize_entry("function", &function)?;
 				map.end()
 			},
 			None => serializer.serialize_none(),
@@ -1009,17 +1007,8 @@ mod universal {
 		pub name: String,
 		#[serde(skip_serializing_if = "Option::is_none")]
 		pub description: Option<String>,
-		pub parameters: FunctionParameters,
-	}
-
-	#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-	pub struct FunctionParameters {
-		#[serde(rename = "type")]
-		pub schema_type: JSONSchemaType,
 		#[serde(skip_serializing_if = "Option::is_none")]
-		pub properties: Option<HashMap<String, Box<JSONSchemaDefine>>>,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		pub required: Option<Vec<String>>,
+		pub parameters: Option<serde_json::Value>,
 	}
 
 	#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
