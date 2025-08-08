@@ -291,6 +291,9 @@ jobs:
       run: make build
       env:
         CARGO_BUILD_ARGS: "--target ${{ matrix.target }} -F ${{ matrix.features }}"
+    - name: Debug dirty build
+      run: |
+        git status
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
