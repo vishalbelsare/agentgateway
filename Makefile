@@ -77,11 +77,18 @@ generate-apis: install-go-tools
 		--go_opt=paths=source_relative \
 		./crates/agentgateway/proto/workload.proto
 
+.PHONY: run-validation-deps
+run-validation-deps:
+	@common/scripts/manage-validation-deps.sh start
+
+.PHONY: stop-validation-deps
+stop-validation-deps:
+	@common/scripts/manage-validation-deps.sh stop
 
 CONFIG_FILES := $(wildcard examples/*/config.yaml)
 
 .PHONY: validate
-validate: $(CONFIG_FILES)
+validate: run-validation-deps $(CONFIG_FILES) stop-validation-deps
 
 .PHONY: $(CONFIG_FILES)
 $(CONFIG_FILES):
