@@ -2,7 +2,7 @@
 config:
   tracing:
     otlpEndpoint: http://localhost:4317
-    randomSampling: '1'
+    randomSampling: true
 binds:
 - port: 3000
   listeners:
