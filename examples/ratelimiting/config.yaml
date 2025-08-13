@@ -1,6 +1,7 @@
 config:
   tracing:
     otlpEndpoint: http://localhost:4317
+    randomSampling: true
 binds:
 - port: 3000
   listeners:
@@ -40,4 +41,4 @@ binds:
           # - name: time
           #   stdio:
           #     cmd: uvx
-          #     args: ["mcp-server-time"]%
+          #     args: ["mcp-server-time"]
