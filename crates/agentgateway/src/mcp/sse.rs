@@ -1,67 +1,42 @@
 use std::collections::HashMap;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::ops::IndexMut;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::Arc;
 
-use a2a_sdk::SendTaskStreamingResponseResult::Status;
 use agent_core::drain::DrainWatcher;
 use agent_core::prelude::Strng;
-use agent_core::trcng;
 use anyhow::Result;
-use axum::extract::{ConnectInfo, OptionalFromRequestParts, Query, State};
+use axum::Json;
+use axum::extract::Query;
 use axum::http::StatusCode;
-use axum::http::header::HeaderMap;
-use axum::http::request::Parts;
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use axum::{Json, RequestPartsExt, Router};
 use axum_core::extract::FromRequest;
-use axum_extra::TypedHeader;
-use axum_extra::headers::Authorization;
-use axum_extra::headers::authorization::Bearer;
-use axum_extra::typed_header::TypedHeaderRejection;
 use bytes::Bytes;
 use futures::stream::Stream;
 use futures::{SinkExt, StreamExt};
 use http::Method;
-use http_body_util::BodyExt;
 use itertools::Itertools;
-use rmcp::RoleServer;
 use rmcp::model::{ClientJsonRpcMessage, GetExtensions};
-use rmcp::service::{TxJsonRpcMessage, serve_server_with_ct};
-use rmcp::transport::async_rw::JsonRpcMessageCodec;
+use rmcp::service::serve_server_with_ct;
 use rmcp::transport::common::server_side_http::session_id as generate_streamable_session_id;
-use rmcp::transport::sse_server::{PostEventQuery, SseServerConfig};
+use rmcp::transport::sse_server::PostEventQuery;
 use rmcp::transport::streamable_http_server::SessionId;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
-use rmcp::transport::{SseServer, StreamableHttpServerConfig, StreamableHttpService};
-use serde_json::{Value, json};
+use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
 use tokio::io::{self};
-use tokio::sync::RwLock;
-use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
-use tower::ServiceExt;
 use tracing::warn;
-use url::form_urlencoded;
 
 use crate::cel::ContextBuilder;
-use crate::http::authorization::RuleSets;
 use crate::http::jwt::Claims;
 use crate::http::*;
-use crate::json::{from_body, to_body};
-use crate::llm::LLMRequest;
+use crate::json::from_body;
+use crate::mcp::relay;
 use crate::mcp::relay::Relay;
-use crate::mcp::{rbac, relay};
 use crate::proxy::httpproxy::PolicyClient;
 use crate::store::{BackendPolicies, Stores};
 use crate::telemetry::log::AsyncLog;
-use crate::types::agent::{
-	BackendName, McpAuthentication, McpBackend, McpIDP, McpTarget as TypeMcpTarget, McpTargetSpec,
-	PolicyTarget, Target,
-};
-use crate::{ProxyInputs, client, json, mcp};
+use crate::types::agent::{BackendName, McpAuthentication, McpBackend, McpIDP, PolicyTarget};
+use crate::{ProxyInputs, json};
 
 type SseTxs =
 	Arc<std::sync::RwLock<HashMap<SessionId, tokio::sync::mpsc::Sender<ClientJsonRpcMessage>>>>;
@@ -76,7 +51,7 @@ pub struct MCPInfo {
 pub struct App {
 	state: Stores,
 	metrics: Arc<relay::metrics::Metrics>,
-	drain: DrainWatcher,
+	_drain: DrainWatcher,
 	session: Arc<LocalSessionManager>,
 
 	sse_txs: SseTxs,
@@ -88,7 +63,7 @@ impl App {
 		Self {
 			state,
 			metrics,
-			drain,
+			_drain: drain,
 			session,
 			sse_txs: Default::default(),
 		}
@@ -126,7 +101,6 @@ impl App {
 				authn,
 			)
 		};
-		let state = self.state.clone();
 		let metrics = self.metrics.clone();
 		let sm = self.session.clone();
 		let client = PolicyClient { inputs: pi.clone() };
@@ -149,11 +123,11 @@ impl App {
 		req.extensions_mut().insert(Arc::new(ctx));
 
 		// Check if authentication is required and JWT token is missing
-		if let Some(auth) = &authn
+		if let Some(_) = &authn
 			&& req.extensions().get::<Claims>().is_none()
 			&& !Self::is_well_known_endpoint(req.uri().path())
 		{
-			return Self::create_auth_required_response(&req, auth).into_response();
+			return Self::create_auth_required_response(&req).into_response();
 		}
 
 		match (req.uri().path(), req.method(), authn) {
@@ -245,7 +219,7 @@ pub struct McpTarget {
 }
 
 impl App {
-	fn create_auth_required_response(req: &Request, auth: &McpAuthentication) -> Response {
+	fn create_auth_required_response(req: &Request) -> Response {
 		let request_path = req.uri().path();
 		let proxy_url = Self::get_redirect_url(req, request_path);
 		let www_authenticate_value = format!(
@@ -322,25 +296,6 @@ impl App {
 
 		let path = uri.path();
 		const OAUTH_PREFIX: &str = "/.well-known/oauth-protected-resource";
-
-		// Remove the oauth-protected-resource prefix and keep the remaining path
-		if let Some(remaining_path) = path.strip_prefix(OAUTH_PREFIX) {
-			uri.to_string().replace(path, remaining_path)
-		} else {
-			// If the prefix is not found, return the original URI
-			uri.to_string()
-		}
-	}
-
-	fn strip_oauth_authorization_server_prefix(req: &Request) -> String {
-		let uri = req
-			.extensions()
-			.get::<filters::OriginalUrl>()
-			.map(|u| u.0.clone())
-			.unwrap_or_else(|| req.uri().clone());
-
-		let path = uri.path();
-		const OAUTH_PREFIX: &str = "/.well-known/oauth-authorization-server";
 
 		// Remove the oauth-protected-resource prefix and keep the remaining path
 		if let Some(remaining_path) = path.strip_prefix(OAUTH_PREFIX) {
@@ -447,8 +402,6 @@ impl App {
 
 	async fn sse_post_handler(&self, req: Request) -> Result<StatusCode, StatusCode> {
 		// Extract query parameters
-		let uri = req.uri();
-		let query = uri.query().unwrap_or("");
 		let Query(PostEventQuery { session_id }) =
 			Query::<PostEventQuery>::try_from_uri(req.uri()).map_err(|_| StatusCode::BAD_REQUEST)?;
 

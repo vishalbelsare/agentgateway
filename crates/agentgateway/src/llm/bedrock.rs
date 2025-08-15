@@ -1,11 +1,10 @@
 use agent_core::prelude::Strng;
 use agent_core::strng;
-use async_openai::types::{ChatCompletionNamedToolChoice, CompletionUsage, FinishReason};
+use async_openai::types::FinishReason;
 use bytes::Bytes;
 use chrono;
 use itertools::Itertools;
 use rand::Rng;
-use serde::Serialize;
 use tracing::trace;
 
 use crate::http::Response;
@@ -89,7 +88,7 @@ impl Provider {
 			.and_then(|s| s.to_str().ok().map(|s| s.to_owned()))
 			.unwrap_or_else(|| format!("{:016x}", rand::rng().random::<u64>()));
 		// This is static for all chunks!
-		let mut created = chrono::Utc::now().timestamp() as u32;
+		let created = chrono::Utc::now().timestamp() as u32;
 		resp.map(move |b| {
 			let mut saw_token = false;
 			parse::aws_sse::transform::<universal::StreamResponse>(b, move |f| {
@@ -152,7 +151,6 @@ impl Provider {
 								role: Some(match start.role {
 									types::Role::Assistant => universal::Role::Assistant,
 									types::Role::User => universal::Role::User,
-									_ => universal::Role::System,
 								}),
 								content: None,
 								refusal: None,
@@ -413,11 +411,12 @@ pub(super) fn translate_request(req: universal::Request, provider: &Provider) ->
 		.map(|user| HashMap::from([("user_id".to_string(), user)]));
 
 	let tool_choice = match req.tool_choice {
-		Some(universal::ToolChoiceOption::Named(universal::NamedToolChoice { r#type, function })) => {
-			Some(types::ToolChoice::Tool {
-				name: function.name,
-			})
-		},
+		Some(universal::ToolChoiceOption::Named(universal::NamedToolChoice {
+			r#type: _,
+			function,
+		})) => Some(types::ToolChoice::Tool {
+			name: function.name,
+		}),
 		Some(universal::ToolChoiceOption::Auto) => Some(types::ToolChoice::Auto),
 		Some(universal::ToolChoiceOption::Required) => Some(types::ToolChoice::Any),
 		Some(universal::ToolChoiceOption::None) => None,
@@ -667,14 +666,17 @@ pub(super) mod types {
 		/// The total number of tokens used in the call to Converse
 		pub usage: Option<TokenUsage>,
 		/// Metrics for the call to Converse
+		#[allow(dead_code)]
 		pub metrics: Option<ConverseMetrics>,
 		/// Additional fields in the response that are unique to the model
+		#[allow(dead_code)]
 		#[serde(rename = "additionalModelResponseFields")]
 		pub additional_model_response_fields: Option<serde_json::Value>,
 		/// A trace object that contains information about the Guardrail behavior
 		pub trace: Option<ConverseTrace>,
 		/// Model performance settings for the request
 		#[serde(rename = "performanceConfig")]
+		#[allow(dead_code)]
 		pub performance_config: Option<PerformanceConfiguration>,
 	}
 
@@ -777,8 +779,10 @@ pub(super) mod types {
 		/// The messages output content block delta.
 		ContentBlockDelta(ContentBlockDeltaEvent),
 		/// Start information for a content block.
+		#[allow(unused)]
 		ContentBlockStart(ContentBlockStartEvent),
 		/// Stop information for a content block.
+		#[allow(unused)]
 		ContentBlockStop(ContentBlockStopEvent),
 		/// Message start information.
 		MessageStart(MessageStartEvent),
@@ -832,11 +836,13 @@ pub(super) mod types {
 		/// The delta for a content block delta event.
 		pub delta: Option<ContentBlockDelta>,
 		/// The block index for a content block delta event.
+		#[allow(dead_code)]
 		pub content_block_index: i32,
 	}
 
 	#[derive(Clone, Debug, Deserialize)]
 	#[serde(rename_all = "camelCase")]
+	#[allow(unused)]
 	pub struct ContentBlockStartEvent {
 		/// Start information about a content block start event.
 		pub start: Option<ContentBlockStart>,
@@ -846,6 +852,7 @@ pub(super) mod types {
 
 	#[derive(Clone, Debug, Deserialize)]
 	#[serde(rename_all = "camelCase")]
+	#[allow(unused)]
 	pub struct ContentBlockStopEvent {
 		/// The index for a content block.
 		pub content_block_index: i32,
@@ -864,6 +871,7 @@ pub(super) mod types {
 		/// The reason why the model stopped generating output.
 		pub stop_reason: StopReason,
 		/// The additional model response fields.
+		#[allow(dead_code)]
 		pub additional_model_response_fields: Option<serde_json::Value>,
 	}
 
@@ -873,8 +881,10 @@ pub(super) mod types {
 		/// Usage information for the conversation stream event.
 		pub usage: Option<TokenUsage>,
 		/// The metrics for the conversation stream metadata event.
+		#[allow(dead_code)]
 		pub metrics: Option<ConverseMetrics>,
 		/// Model performance configuration metadata for the conversation stream event.
+		#[allow(dead_code)]
 		pub performance_config: Option<PerformanceConfiguration>,
 	}
 
@@ -890,6 +900,7 @@ pub(super) mod types {
 	#[serde(rename_all = "camelCase")]
 	pub enum ContentBlockStart {
 		/// Information about a tool that the model is requesting to use.
+		#[allow(dead_code)]
 		ToolUse(ToolUseBlockStart),
 	}
 
@@ -897,8 +908,10 @@ pub(super) mod types {
 	#[serde(rename_all = "camelCase")]
 	pub struct ToolUseBlockStart {
 		/// The ID for the tool request.
+		#[allow(dead_code)]
 		pub tool_use_id: String,
 		/// The name of the tool that the model is requesting to use.
+		#[allow(dead_code)]
 		pub name: String,
 	}
 }

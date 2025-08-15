@@ -178,22 +178,15 @@ pub mod insecure {
 }
 
 pub mod trustdomain {
-	use std::error::Error;
-	use std::fmt::{Debug, Display};
-	use std::str::FromStr;
+
+	use std::fmt::Debug;
 	use std::sync::Arc;
 
-	use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-	use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-	use rustls::server::ParsedCertificate;
+	use rustls::client::danger::HandshakeSignatureValid;
+	use rustls::pki_types::{CertificateDer, UnixTime};
 	use rustls::server::danger::{ClientCertVerified, ClientCertVerifier};
-	use rustls::{
-		ClientConfig, DigitallySignedStruct, DistinguishedName, RootCertStore, SignatureScheme,
-	};
-	use tracing::debug;
-	use x509_parser::certificate::X509Certificate;
+	use rustls::{DigitallySignedStruct, DistinguishedName, SignatureScheme};
 
-	use crate::transport::tls::provider;
 	use crate::types::discovery::Identity;
 	use crate::*;
 
@@ -286,20 +279,15 @@ pub mod trustdomain {
 }
 
 pub mod identity {
-	use std::error::Error;
-	use std::fmt::{Debug, Display};
-	use std::str::FromStr;
+
+	use std::fmt::Debug;
 	use std::sync::Arc;
 
 	use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 	use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 	use rustls::server::ParsedCertificate;
-	use rustls::server::danger::{ClientCertVerified, ClientCertVerifier};
-	use rustls::{
-		ClientConfig, DigitallySignedStruct, DistinguishedName, RootCertStore, SignatureScheme,
-	};
+	use rustls::{DigitallySignedStruct, SignatureScheme};
 	use tracing::debug;
-	use x509_parser::certificate::X509Certificate;
 
 	use crate::transport::tls::provider;
 	use crate::types::discovery::Identity;

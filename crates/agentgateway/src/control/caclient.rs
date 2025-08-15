@@ -2,20 +2,16 @@ use std::cmp;
 use std::io::Cursor;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use ::http::Uri;
 use rustls::client::Resumption;
 use rustls::server::VerifierBuilderError;
 use rustls::{ClientConfig, RootCertStore, ServerConfig};
 use rustls_pemfile::Item;
 use rustls_pki_types::PrivateKeyDer;
-use tokio::sync::{Mutex, RwLock, watch};
-use tokio::time::sleep_until;
+use tokio::sync::watch;
 use tonic::IntoRequest;
-use tonic::body::Body;
-use tonic::metadata::{AsciiMetadataKey, AsciiMetadataValue};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use x509_parser::certificate::X509Certificate;
 
 use crate::types::discovery::Identity;
@@ -28,8 +24,8 @@ pub mod istio {
 	}
 }
 
+use istio::ca::IstioCertificateRequest;
 use istio::ca::istio_certificate_service_client::IstioCertificateServiceClient;
-use istio::ca::{IstioCertificateRequest, IstioCertificateResponse};
 
 use crate::control::{AuthSource, RootCert};
 use crate::http::backendtls::BackendTLS;
@@ -198,7 +194,7 @@ impl WorkloadCertificate {
 			raw_client_cert_verifier,
 			Some(trust_domain.clone()),
 		);
-		let mut sc = ServerConfig::builder_with_provider(transport::tls::provider())
+		let sc = ServerConfig::builder_with_provider(transport::tls::provider())
 			.with_protocol_versions(transport::tls::ALL_TLS_VERSIONS)
 			.expect("server config must be valid")
 			.with_client_cert_verifier(client_cert_verifier)
@@ -320,7 +316,6 @@ enum CertificateState {
 
 #[derive(Debug)]
 pub struct CaClient {
-	config: Config,
 	state: watch::Receiver<CertificateState>,
 	_fetcher_handle: tokio::task::JoinHandle<()>,
 }
@@ -340,7 +335,6 @@ impl CaClient {
 		});
 
 		Ok(Self {
-			config,
 			state: state_rx,
 			_fetcher_handle: fetcher_handle,
 		})
@@ -450,7 +444,7 @@ impl CaClient {
 		let private_key = csr.private_key;
 
 		// Create request
-		let mut request = tonic::Request::new(IstioCertificateRequest {
+		let request = tonic::Request::new(IstioCertificateRequest {
 			csr: csr.csr,
 			validity_duration: config.secret_ttl.as_secs() as i64,
 			metadata: None, // We don't need impersonation for single cert

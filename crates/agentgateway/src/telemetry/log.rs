@@ -1,28 +1,23 @@
 use std::borrow::Cow;
-use std::cmp;
-use std::collections::{BTreeMap, HashSet};
 use std::fmt::Debug;
-use std::hash::BuildHasher;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 use std::task::{Context, Poll, ready};
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 
 use agent_core::metrics::CustomField;
 use agent_core::strng;
 use agent_core::telemetry::{OptionExt, ValueBag, debug, display};
 use crossbeam::atomic::AtomicCell;
-use frozen_collections::maps::Values;
-use frozen_collections::{FzHashSet, FzOrderedMap, FzStringMap, MapIteration};
+use frozen_collections::{FzHashSet, FzStringMap};
 use http_body::{Body, Frame, SizeHint};
 use itertools::Itertools;
 use serde::{Serialize, Serializer};
 use serde_json::Value;
-use tracing::log::Log;
-use tracing::{Level, event, log, trace};
+use tracing::{Level, trace};
 
-use crate::cel::{ContextBuilder, Error, Expression};
+use crate::cel::{ContextBuilder, Expression};
 use crate::telemetry::metrics::{GenAILabels, GenAILabelsTokenUsage, HTTPLabels, Metrics};
 use crate::telemetry::trc;
 use crate::telemetry::trc::TraceParent;
@@ -30,7 +25,6 @@ use crate::transport::stream::{TCPConnectionInfo, TLSConnectionInfo};
 use crate::types::agent::{
 	BackendName, BindName, GatewayName, ListenerName, RouteName, RouteRuleName, Target,
 };
-use crate::types::discovery::NamespacedHostname;
 use crate::{cel, llm, mcp};
 
 /// AsyncLog is a wrapper around an item that can be atomically set.
@@ -147,7 +141,7 @@ where
 {
 	fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
 		let items = iter.into_iter().collect_vec();
-		let order: Box<[Box<str>]> = items.iter().map(|(k, v)| k.as_ref().into()).collect();
+		let order: Box<[Box<str>]> = items.iter().map(|(k, _)| k.as_ref().into()).collect();
 		let map: FzStringMap<Box<str>, V> = items.into_iter().collect();
 		Self { map, order }
 	}
@@ -264,7 +258,7 @@ impl<'a> CelLoggingExecutor<'a> {
 					Self::resolve_value(raws, Cow::Owned(format!("{k}.{mk}")), mv, false);
 				}
 				return;
-			} else if let Some(v @ cel::Value::Map(m)) = m.map.get(&cel::FLATTEN_MAP_RECURSIVE) {
+			} else if let Some(cel::Value::Map(m)) = m.map.get(&cel::FLATTEN_MAP_RECURSIVE) {
 				raws.reserve(m.map.len());
 				for (mk, mv) in m.map.as_ref() {
 					Self::resolve_value(raws, Cow::Owned(format!("{k}.{mk}")), mv, true);
@@ -712,11 +706,6 @@ impl Drop for DropOnLog {
 	}
 }
 
-fn to_value<T: AsRef<str>>(t: &T) -> impl tracing::Value + '_ {
-	let v: &str = t.as_ref();
-	v
-}
-
 pin_project_lite::pin_project! {
 		/// A data stream created from a [`Body`].
 		#[derive(Debug)]
@@ -742,7 +731,7 @@ where
 	type Error = B::Error;
 
 	fn poll_frame(
-		mut self: Pin<&mut Self>,
+		self: Pin<&mut Self>,
 		cx: &mut Context<'_>,
 	) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
 		let this = self.project();

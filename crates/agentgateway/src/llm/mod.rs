@@ -4,25 +4,20 @@ use ::http::uri::{Authority, PathAndQuery};
 use ::http::{HeaderValue, StatusCode, header};
 use agent_core::prelude::Strng;
 use agent_core::strng;
-use async_openai::types::ChatCompletionRequestMessage;
 use axum_extra::headers::authorization::Bearer;
-use headers::{ContentEncoding, Header, HeaderMapExt};
+use headers::{ContentEncoding, HeaderMapExt};
 use itertools::Itertools;
 pub use policy::Policy;
-use serde_json::Value;
 use tiktoken_rs::CoreBPE;
 use tiktoken_rs::tokenizer::{Tokenizer, get_tokenizer};
 
 use crate::http::auth::{AwsAuth, BackendAuth};
-use crate::http::backendtls::BackendTLS;
 use crate::http::jwt::Claims;
-use crate::http::localratelimit::RateLimit;
 use crate::http::{Body, Request, Response};
 use crate::llm::universal::{ChatCompletionError, ChatCompletionErrorResponse};
-use crate::proxy::ProxyError;
-use crate::store::{BackendPolicies, LLMRequestPolicies, LLMResponsePolicies};
+use crate::store::{BackendPolicies, LLMResponsePolicies};
 use crate::telemetry::log::{AsyncLog, RequestLog};
-use crate::types::agent::{BackendName, Target};
+use crate::types::agent::Target;
 use crate::{client, *};
 
 pub mod anthropic;
@@ -121,11 +116,11 @@ pub enum RequestResult {
 impl AIProvider {
 	pub fn provider(&self) -> Strng {
 		match self {
-			AIProvider::OpenAI(p) => openai::Provider::NAME,
-			AIProvider::Anthropic(p) => anthropic::Provider::NAME,
-			AIProvider::Gemini(p) => gemini::Provider::NAME,
-			AIProvider::Vertex(p) => vertex::Provider::NAME,
-			AIProvider::Bedrock(p) => bedrock::Provider::NAME,
+			AIProvider::OpenAI(_p) => openai::Provider::NAME,
+			AIProvider::Anthropic(_p) => anthropic::Provider::NAME,
+			AIProvider::Gemini(_p) => gemini::Provider::NAME,
+			AIProvider::Vertex(_p) => vertex::Provider::NAME,
+			AIProvider::Bedrock(_p) => bedrock::Provider::NAME,
 		}
 	}
 	pub fn default_connector(&self) -> (Target, BackendPolicies) {
@@ -242,8 +237,8 @@ impl AIProvider {
 		policies: Option<&Policy>,
 		req: Request,
 		tokenize: bool,
-		mut log: &mut Option<&mut RequestLog>,
-	) -> (Result<RequestResult, AIError>) {
+		log: &mut Option<&mut RequestLog>,
+	) -> Result<RequestResult, AIError> {
 		// Buffer the body, max 2mb
 		let (mut parts, body) = req.into_parts();
 		let Ok(bytes) = axum::body::to_bytes(body, 2_097_152).await else {
@@ -443,7 +438,7 @@ impl AIProvider {
 	) -> Result<Response, AIError> {
 		let model = req.request_model.clone();
 		// Store an empty response, as we stream in info we will parse into it
-		let mut llmresp = llm::LLMResponse {
+		let llmresp = llm::LLMResponse {
 			request: req,
 			input_tokens_from_response: Default::default(),
 			output_tokens: Default::default(),

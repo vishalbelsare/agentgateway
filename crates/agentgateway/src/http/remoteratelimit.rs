@@ -1,37 +1,15 @@
-use std::collections::HashMap;
-use std::convert::Infallible;
-use std::time::SystemTime;
-
-use ::http::uri::Authority;
-use ::http::{HeaderMap, StatusCode, Uri};
-use anyhow::anyhow;
-use bytes::Bytes;
-use http_body::Frame;
-use http_body_util::BodyStream;
-use itertools::Itertools;
-use prost_types::Timestamp;
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio_stream::StreamExt;
-use tokio_stream::wrappers::ReceiverStream;
+use ::http::{HeaderMap, StatusCode};
 
 use crate::cel::{Executor, Expression};
-use crate::client::{Client, Transport};
-use crate::control::AuthSource;
-use crate::http::backendtls::BackendTLS;
 use crate::http::ext_proc::GrpcReferenceChannel;
-use crate::http::filters::DirectResponse;
 use crate::http::localratelimit::RateLimitType;
 use crate::http::remoteratelimit::proto::rate_limit_descriptor::Entry;
 use crate::http::remoteratelimit::proto::rate_limit_service_client::RateLimitServiceClient;
 use crate::http::remoteratelimit::proto::{RateLimitDescriptor, RateLimitRequest};
-use crate::http::transformation_cel::Transformation;
-use crate::http::{HeaderName, HeaderValue, PolicyResponse, Request, Response};
-use crate::llm::LLMRequest;
+use crate::http::{HeaderName, HeaderValue, PolicyResponse, Request};
 use crate::proxy::ProxyError;
 use crate::proxy::httpproxy::PolicyClient;
-use crate::transport::stream::{TCPConnectionInfo, TLSConnectionInfo};
-use crate::types::agent;
-use crate::types::agent::{Backend, SimpleBackendReference, Target};
+use crate::types::agent::SimpleBackendReference;
 use crate::*;
 
 #[allow(warnings)]
@@ -114,7 +92,6 @@ impl LLMResponseAmend {
 impl RemoteRateLimit {
 	fn build_request(
 		&self,
-		req: &mut Request,
 		exec: &Executor<'_>,
 		limit_type: RateLimitType,
 		cost: Option<u64>,
@@ -147,7 +124,6 @@ impl RemoteRateLimit {
 		client: PolicyClient,
 		req: &mut Request,
 		exec: &Executor<'_>,
-		limit_type: RateLimitType,
 		cost: u64,
 	) -> Result<(PolicyResponse, Option<LLMResponseAmend>), ProxyError> {
 		if !self
@@ -159,7 +135,7 @@ impl RemoteRateLimit {
 			// Nothing to do
 			return Ok((PolicyResponse::default(), None));
 		}
-		let request = self.build_request(req, exec, RateLimitType::Tokens, Some(cost));
+		let request = self.build_request(exec, RateLimitType::Tokens, Some(cost));
 		let cr = self.check_internal(client.clone(), request.clone()).await;
 		let r = LLMResponseAmend {
 			base: self.clone(),
@@ -184,9 +160,9 @@ impl RemoteRateLimit {
 			.any(|d| d.limit_type == RateLimitType::Requests)
 		{
 			// Nothing to do
-			return (Ok(PolicyResponse::default()));
+			return Ok(PolicyResponse::default());
 		}
-		let request = self.build_request(req, exec, RateLimitType::Requests, None);
+		let request = self.build_request(exec, RateLimitType::Requests, None);
 		let cr = self.check_internal(client, request).await?;
 		Self::apply(req, cr)
 	}

@@ -1,20 +1,8 @@
-use std::collections::{HashMap, HashSet};
-use std::fmt::Display;
-use std::str::FromStr;
-
 use agent_core::bow::OwnedOrBorrowed;
-use anyhow::{Context as _, Error};
-use lazy_static::lazy_static;
-use secrecy::SecretString;
-use serde::ser::{SerializeMap, SerializeSeq};
+use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::Value;
-use serde_json::map::Map;
-use tracing::log;
 
 use crate::cel::{ContextBuilder, Executor};
-use crate::http::jwt::Claims;
-use crate::mcp::rbac::ResourceType;
 use crate::*;
 
 #[derive(Clone, Debug)]
@@ -24,11 +12,7 @@ impl HTTPAuthorizationSet {
 	pub fn new(rs: RuleSets) -> Self {
 		Self(rs)
 	}
-	pub fn apply(
-		&self,
-		req: &mut crate::http::Request,
-		exec: &cel::Executor<'_>,
-	) -> anyhow::Result<()> {
+	pub fn apply(&self, exec: &cel::Executor<'_>) -> anyhow::Result<()> {
 		tracing::debug!("Checking HTTP request");
 		let allowed = self
 			.0

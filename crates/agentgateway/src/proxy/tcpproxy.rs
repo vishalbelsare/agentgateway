@@ -1,14 +1,9 @@
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use agent_core::strng;
-use anyhow::anyhow;
 use itertools::Itertools;
 use rand::prelude::IndexedRandom;
 
-use crate::client::Transport;
-use crate::http::Request;
 use crate::proxy::ProxyError;
 use crate::telemetry::log;
 use crate::telemetry::log::{DropOnLog, RequestLog};
@@ -17,13 +12,9 @@ use crate::transport::stream;
 use crate::transport::stream::{Socket, TCPConnectionInfo, TLSConnectionInfo};
 use crate::types::agent;
 use crate::types::agent::{
-	Backend, BackendReference, BindName, BindProtocol, HeaderMatch, HeaderValueMatch, Listener,
-	ListenerProtocol, PathMatch, PolicyTarget, QueryValueMatch, Route, RouteBackend,
-	RouteBackendReference, SimpleBackend, SimpleBackendReference, TCPRoute, TCPRouteBackend,
-	TCPRouteBackendReference, Target,
+	BindName, BindProtocol, Listener, ListenerProtocol, PolicyTarget, SimpleBackend, TCPRoute,
+	TCPRouteBackend, TCPRouteBackendReference, Target,
 };
-use crate::types::discovery::NetworkAddress;
-use crate::types::discovery::gatewayaddress::Destination;
 use crate::{ProxyInputs, *};
 
 #[derive(Clone)]
@@ -31,6 +22,7 @@ pub struct TCPProxy {
 	pub(super) bind_name: BindName,
 	pub(super) inputs: Arc<ProxyInputs>,
 	pub(super) selected_listener: Arc<Listener>,
+	#[allow(unused)]
 	pub(super) target_address: SocketAddr,
 }
 
@@ -84,7 +76,7 @@ impl TCPProxy {
 			.and_then(|tls| tls.server_name.as_deref());
 
 		let selected_listener = self.selected_listener.clone();
-		let upstream = self.inputs.upstream.clone();
+		let _upstream = self.inputs.upstream.clone();
 		let inputs = self.inputs.clone();
 		let bind_name = self.bind_name.clone();
 		debug!(bind=%bind_name, "route for bind");
@@ -93,7 +85,7 @@ impl TCPProxy {
 		log.listener_name = Some(selected_listener.name.clone());
 		debug!(bind=%bind_name, listener=%selected_listener.key, "selected listener");
 
-		let (selected_route) =
+		let selected_route =
 			select_best_route(sni, selected_listener.clone()).ok_or(ProxyError::RouteNotFound)?;
 		log.route_rule_name = selected_route.rule_name.clone();
 		log.route_name = Some(selected_route.route_name.clone());
@@ -131,12 +123,11 @@ impl TCPProxy {
 			SimpleBackend::Invalid => return Err(ProxyError::BackendDoesNotExist),
 		};
 
-		let policies = inputs
+		let _policies = inputs
 			.stores
 			.read_binds()
 			.backend_policies(policy_key.clone());
 		// let transport = policies.i // TODO
-		let transport = Transport::Plaintext;
 		let Target::Address(addr) = target else {
 			panic!("TODO")
 		};

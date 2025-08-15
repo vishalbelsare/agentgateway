@@ -1,10 +1,8 @@
 use serde::de::Error;
 use serde::ser::SerializeMap;
 
-use crate::http::Request;
 use crate::llm::LLMRequest;
 use crate::proxy::ProxyError;
-use crate::types::agent::{HostRedirect, PathRedirect};
 use crate::*;
 
 #[derive(Debug, Clone)]
@@ -73,7 +71,7 @@ impl TryFrom<RateLimitSerde> for RateLimit {
 }
 
 impl RateLimit {
-	pub fn check_request(&self, req: &Request) -> Result<(), ProxyError> {
+	pub fn check_request(&self) -> Result<(), ProxyError> {
 		if self.limit_type != RateLimitType::Requests {
 			return Ok(());
 		}
@@ -133,8 +131,6 @@ impl RateLimit {
 // Forked from https://github.com/pelikan-io/rustcommon/tree/main/ratelimit to provide some additional functions
 mod ratelimit {
 	use core::sync::atomic::{AtomicU64, Ordering};
-	use std::cmp;
-	use std::ops::Add;
 
 	use clocksource::precise::{AtomicInstant, Duration, Instant};
 	use thiserror::Error;
@@ -179,30 +175,13 @@ mod ratelimit {
 			Builder::new(amount, interval)
 		}
 
-		/// Return the current effective rate of the Ratelimiter in tokens/second
-		pub fn rate(&self) -> f64 {
-			let parameters = self.parameters;
-
-			parameters.refill_amount as f64 * 1_000_000_000.0
-				/ parameters.refill_interval.as_nanos() as f64
-		}
-
-		/// Return the current interval between refills.
-		pub fn refill_interval(&self) -> Duration {
-			self.parameters.refill_interval
-		}
-
-		/// Return the current number of tokens to be added on each refill.
-		pub fn refill_amount(&self) -> u64 {
-			self.parameters.refill_amount
-		}
-
 		/// Returns the maximum number of tokens that can
 		pub fn max_tokens(&self) -> u64 {
 			self.parameters.capacity
 		}
 
 		/// Returns the number of tokens currently available.
+		#[allow(dead_code)]
 		pub fn available(&self) -> u64 {
 			self.available.load(Ordering::Relaxed)
 		}
@@ -220,6 +199,7 @@ mod ratelimit {
 
 		/// Returns the number of tokens that have been dropped due to bucket
 		/// overflowing.
+		#[allow(dead_code)]
 		pub fn dropped(&self) -> u64 {
 			self.dropped.load(Ordering::Relaxed)
 		}
@@ -234,7 +214,7 @@ mod ratelimit {
 				return;
 			}
 
-			self
+			let _ = self
 				.available
 				.fetch_update(Ordering::AcqRel, Ordering::Acquire, |v| {
 					if tokens_to_remove < 0 {
@@ -267,7 +247,7 @@ mod ratelimit {
 				// acquire read lock for refill parameters
 				parameters = self.parameters;
 
-				intervals = ((time - refill_at).as_nanos() / parameters.refill_interval.as_nanos() + 1);
+				intervals = (time - refill_at).as_nanos() / parameters.refill_interval.as_nanos() + 1;
 
 				// calculate when the following refill would be
 				let next_refill =
@@ -463,27 +443,6 @@ mod ratelimit {
 		use std::time::{Duration, Instant};
 
 		use super::*;
-
-		macro_rules! approx_eq {
-			($value:expr, $target:expr) => {
-				let value: f64 = $value;
-				let target: f64 = $target;
-				assert!(value >= target * 0.999, "{value} >= {}", target * 0.999);
-				assert!(value <= target * 1.001, "{value} <= {}", target * 1.001);
-			};
-		}
-
-		// test that the configured rate and calculated effective rate are close
-		#[test]
-		pub fn rate() {
-			// amount + interval
-			let rl = Ratelimiter::builder(4, Duration::from_nanos(333))
-				.max_tokens(4)
-				.build()
-				.unwrap();
-
-			approx_eq!(rl.rate(), 12012012.0);
-		}
 
 		// quick test that a ratelimiter yields tokens at the desired rate
 		#[test]

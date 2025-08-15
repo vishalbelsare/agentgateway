@@ -3,19 +3,15 @@ use agent_core::strng;
 use async_openai::types::FinishReason;
 use bytes::Bytes;
 use chrono;
-use itertools::Itertools;
-use rand::Rng;
-use serde::Serialize;
-use serde_json::Value;
 
 use crate::http::Response;
 use crate::llm::anthropic::types::{
 	ContentBlock, ContentBlockDelta, MessagesErrorResponse, MessagesRequest, MessagesResponse,
 	MessagesStreamEvent, StopReason,
 };
-use crate::llm::{AIError, LLMRequest, LLMResponse, universal};
+use crate::llm::{AIError, LLMResponse, universal};
 use crate::telemetry::log::AsyncLog;
-use crate::{llm, parse, *};
+use crate::{parse, *};
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schema", derive(JsonSchema))]
@@ -53,8 +49,8 @@ impl Provider {
 		resp.map(|b| {
 			let mut message_id = None;
 			let mut model = String::new();
-			let mut created = chrono::Utc::now().timestamp() as u32;
-			let mut finish_reason = None;
+			let created = chrono::Utc::now().timestamp() as u32;
+			// let mut finish_reason = None;
 			let mut input_tokens = 0;
 			let mut saw_token = false;
 			// https://docs.anthropic.com/en/docs/build-with-claude/streaming
@@ -116,8 +112,9 @@ impl Provider {
 						};
 						mk(vec![choice], None)
 					},
-					MessagesStreamEvent::MessageDelta { usage, delta } => {
-						finish_reason = delta.stop_reason.as_ref().map(translate_stop_reason);
+					MessagesStreamEvent::MessageDelta { usage, delta: _ } => {
+						// TODO
+						// finish_reason = delta.stop_reason.as_ref().map(translate_stop_reason);
 						log.non_atomic_mutate(|r| {
 							r.output_tokens = Some(usage.output_tokens as u64);
 							if let Some(inp) = r.input_tokens_from_response {
@@ -298,11 +295,12 @@ pub(super) fn translate_request(req: universal::Request) -> types::MessagesReque
 	});
 
 	let tool_choice = match req.tool_choice {
-		Some(universal::ToolChoiceOption::Named(universal::NamedToolChoice { r#type, function })) => {
-			Some(types::ToolChoice::Tool {
-				name: function.name,
-			})
-		},
+		Some(universal::ToolChoiceOption::Named(universal::NamedToolChoice {
+			r#type: _,
+			function,
+		})) => Some(types::ToolChoice::Tool {
+			name: function.name,
+		}),
 		Some(universal::ToolChoiceOption::Auto) => Some(types::ToolChoice::Auto),
 		Some(universal::ToolChoiceOption::Required) => Some(types::ToolChoice::Any),
 		Some(universal::ToolChoiceOption::None) => Some(types::ToolChoice::None),

@@ -1,13 +1,10 @@
 use ::http::header::InvalidHeaderName;
 use ::http::response;
 use ::http::uri::InvalidUri;
-use anyhow::anyhow;
 
 use crate::http::uri::Scheme;
 use crate::http::{HeaderMap, HeaderName, HeaderValue, Request, Response, StatusCode, Uri};
-use crate::types::agent::{
-	Backend, HostRedirect, PathMatch, PathRedirect, SimpleBackend, SimpleBackendReference,
-};
+use crate::types::agent::{HostRedirect, PathMatch, PathRedirect, SimpleBackendReference};
 use crate::*;
 
 #[cfg(test)]
@@ -134,7 +131,7 @@ pub struct DirectResponse {
 }
 
 impl DirectResponse {
-	pub fn apply(&self, req: &mut Request) -> Result<Response, Error> {
+	pub fn apply(&self) -> Result<Response, Error> {
 		response::Builder::new()
 			.status(self.status)
 			.body(http::Body::from(self.body.clone()))

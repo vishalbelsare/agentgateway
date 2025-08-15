@@ -1,47 +1,17 @@
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::collections::hash_map::Entry;
-use std::fmt::Display;
-use std::io::Cursor;
-use std::marker::PhantomData;
 use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU16;
-use std::str::FromStr;
 use std::sync::Arc;
-use std::{cmp, net};
 
-use anyhow::anyhow;
-use duration_str::DError::ParseError;
-use indexmap::IndexMap;
-use itertools::Itertools;
-use once_cell::sync::Lazy;
-use openapiv3::OpenAPI;
-use regex::Regex;
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use rustls::{ClientConfig, ServerConfig};
-use rustls_pemfile::Item;
-use secrecy::SecretString;
-use serde::ser::SerializeMap;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use thiserror::Error;
+use rustls::ServerConfig;
 
 use super::agent::*;
 use crate::http::auth::{AwsAuth, BackendAuth};
-use crate::http::authorization::RuleSet;
-use crate::http::jwt::Jwt;
-use crate::http::localratelimit::RateLimit;
-use crate::http::{
-	HeaderName, HeaderValue, StatusCode, backendtls, ext_proc, filters, localratelimit, retry,
-	status, timeout, uri,
-};
+use crate::http::{StatusCode, backendtls, ext_proc, filters, localratelimit, uri};
 use crate::llm::{AIBackend, AIProvider};
-use crate::transport::tls;
-use crate::types::agent::Backend::Opaque;
 use crate::types::discovery::NamespacedHostname;
 use crate::types::proto;
 use crate::types::proto::ProtoError;
 use crate::types::proto::agent::mcp_target::Protocol;
-use crate::types::proto::agent::policy_spec::ExternalAuth;
 use crate::types::proto::agent::policy_spec::inference_routing::FailureMode;
 use crate::types::proto::agent::policy_spec::local_rate_limit::Type;
 use crate::*;
@@ -88,9 +58,9 @@ impl TryFrom<proto::agent::BackendAuthPolicy> for BackendAuth {
 
 	fn try_from(s: proto::agent::BackendAuthPolicy) -> Result<Self, Self::Error> {
 		Ok(match s.kind {
-			Some(proto::agent::backend_auth_policy::Kind::Passthrough(p)) => BackendAuth::Passthrough {},
+			Some(proto::agent::backend_auth_policy::Kind::Passthrough(_)) => BackendAuth::Passthrough {},
 			Some(proto::agent::backend_auth_policy::Kind::Key(k)) => BackendAuth::Key(k.secret.into()),
-			Some(proto::agent::backend_auth_policy::Kind::Gcp(g)) => BackendAuth::Gcp {},
+			Some(proto::agent::backend_auth_policy::Kind::Gcp(_)) => BackendAuth::Gcp {},
 			Some(proto::agent::backend_auth_policy::Kind::Aws(a)) => {
 				let aws_auth = match a.kind {
 					Some(proto::agent::aws::Kind::ExplicitConfig(config)) => AwsAuth::ExplicitConfig {
@@ -610,7 +580,7 @@ impl TryFrom<&proto::agent::Policy> for TargetedPolicy {
 					context: Some(ea.context.clone()),
 				})
 			},
-			Some(proto::agent::policy_spec::Kind::A2a(a2a)) => Policy::A2a(A2aPolicy {}),
+			Some(proto::agent::policy_spec::Kind::A2a(_)) => Policy::A2a(A2aPolicy {}),
 			Some(proto::agent::policy_spec::Kind::BackendTls(btls)) => {
 				let tls = backendtls::ResolvedBackendTLS {
 					cert: btls.cert.clone(),

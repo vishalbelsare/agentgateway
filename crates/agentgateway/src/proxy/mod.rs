@@ -7,11 +7,8 @@ pub mod tcpproxy;
 pub use gateway::Gateway;
 use hyper_util_fork::client::legacy::Error as HyperError;
 
-use crate::http::{Body, HeaderValue, Response, StatusCode};
-use crate::types::agent::{
-	Backend, BackendReference, RouteBackend, RouteBackendReference, SimpleBackend,
-	SimpleBackendReference,
-};
+use crate::http::{HeaderValue, Response, StatusCode};
+use crate::types::agent::{Backend, BackendReference, SimpleBackend, SimpleBackendReference};
 use crate::*;
 
 #[derive(thiserror::Error, Debug)]
@@ -166,7 +163,7 @@ pub fn resolve_backend(b: &BackendReference, pi: &ProxyInputs) -> Result<Backend
 				.ok_or(ProxyError::ServiceNotFound)?;
 			Backend::Service(svc, *port)
 		},
-		BackendReference::Backend(name) => {
+		BackendReference::Backend(_) => {
 			let be = pi
 				.stores
 				.read_binds()
@@ -193,7 +190,7 @@ pub fn resolve_simple_backend(
 				.ok_or(ProxyError::ServiceNotFound)?;
 			SimpleBackend::Service(svc, *port)
 		},
-		SimpleBackendReference::Backend(name) => {
+		SimpleBackendReference::Backend(_) => {
 			let be = pi
 				.stores
 				.read_binds()

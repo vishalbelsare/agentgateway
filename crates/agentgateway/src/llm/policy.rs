@@ -1,25 +1,16 @@
-use std::num::NonZeroU8;
 use std::ops::Deref;
 
 use ::http::HeaderMap;
 use async_openai::types::{ChatCompletionRequestMessage, CreateChatCompletionRequest};
-use axum::body::to_bytes;
 use bytes::Bytes;
-use serde_json::map::Entry;
 
-use crate::client;
-use crate::http::auth::BackendAuth;
-use crate::http::auth::SimpleBackendAuth;
+use crate::http::auth::{BackendAuth, SimpleBackendAuth};
 use crate::http::jwt::Claims;
-use crate::http::{PolicyResponse, Response, StatusCode, auth, inspect_body};
+use crate::http::{Response, StatusCode, auth};
 use crate::llm::policy::webhook::{MaskActionBody, Message, RequestAction};
-use crate::llm::universal::MessageRole;
-use crate::llm::{
-	AIError, SimpleChatCompletionMessage, anthropic, bedrock, gemini, openai, pii, universal, vertex,
-};
-use crate::proxy::ProxyError;
+use crate::llm::{AIError, pii, universal};
 use crate::types::agent::Target;
-use crate::*;
+use crate::{client, *};
 
 #[apply(schema!)]
 pub struct Policy {
@@ -36,10 +27,16 @@ pub struct Policy {
 #[apply(schema!)]
 pub struct PromptEnrichment {
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	#[cfg_attr(feature = "schema", schemars(with = "SimpleChatCompletionMessage"))]
+	#[cfg_attr(
+		feature = "schema",
+		schemars(with = "crate::llm::SimpleChatCompletionMessage")
+	)]
 	append: Vec<ChatCompletionRequestMessage>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	#[cfg_attr(feature = "schema", schemars(with = "SimpleChatCompletionMessage"))]
+	#[cfg_attr(
+		feature = "schema",
+		schemars(with = "crate::llm::SimpleChatCompletionMessage")
+	)]
 	prepend: Vec<ChatCompletionRequestMessage>,
 }
 
@@ -115,7 +112,7 @@ impl Policy {
 				"input": content,
 				"model": model,
 			}))?))?;
-			auth::apply_backend_auth(Some(&auth), &mut req).await;
+			auth::apply_backend_auth(Some(&auth), &mut req).await?;
 			let resp = client.simple_call(req).await;
 			let resp: async_openai::types::CreateModerationResponse =
 				json::from_body(resp?.into_body()).await?;
@@ -499,7 +496,7 @@ mod webhook {
 			}
 			rb = rb.header(k.clone(), v.clone());
 		}
-		let mut req = rb
+		let req = rb
 			.header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
 			.body(crate::http::Body::from(body_bytes))?;
 		Ok(req)

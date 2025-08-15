@@ -1,18 +1,12 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::time::Duration;
 
-use agent_core::strng;
 use divan::Bencher;
 use http::Method;
-use serde_json::json;
 
 use super::*;
 use crate::http::Body;
-use crate::store::Stores;
-use crate::types::agent::{Listener, ListenerProtocol, PathMatch, Route, RouteMatch, RouteSet};
 
 fn eval_request(expr: &str, req: crate::http::Request) -> Result<Value, Error> {
 	let mut cb = ContextBuilder::new();
@@ -23,18 +17,9 @@ fn eval_request(expr: &str, req: crate::http::Request) -> Result<Value, Error> {
 	exec.eval(&exp)
 }
 
-fn eval(expr: &str) -> Result<Value, Error> {
-	let mut cb = ContextBuilder::new();
-	let exp = Expression::new(expr)?;
-	cb.register_expression(&exp);
-	let exec = cb.build()?;
-	exec.eval(&exp)
-}
-
 #[test]
 fn test_eval() {
 	let expr = Arc::new(Expression::new(r#"request.method"#).unwrap());
-	let ctx = root_context();
 	let req = ::http::Request::builder()
 		.method(Method::GET)
 		.header("x-example", "value")
@@ -45,7 +30,7 @@ fn test_eval() {
 	cb.with_request(&req);
 	let exec = cb.build().unwrap();
 
-	exec.eval(&expr);
+	exec.eval(&expr).unwrap();
 }
 
 #[test]
@@ -74,11 +59,6 @@ fn bench_native(b: Bencher) {
 
 #[divan::bench]
 fn bench_native_map(b: Bencher) {
-	let req = ::http::Request::builder()
-		.method(Method::GET)
-		.header("x-example", "value")
-		.body(http_body_util::Empty::<Bytes>::new())
-		.unwrap();
 	let map = HashMap::from([(
 		"request".to_string(),
 		HashMap::from([("method".to_string(), "GET".to_string())]),
@@ -117,7 +97,7 @@ fn with_profiling(name: &str, f: impl FnOnce()) {
 	let report = guard.report().build().unwrap();
 	let profile = report.pprof().unwrap();
 
-	let mut body = profile.write_to_bytes().unwrap();
+	let body = profile.write_to_bytes().unwrap();
 	File::create(format!("/tmp/pprof-{}::{name}", function!()))
 		.unwrap()
 		.write_all(&body)
@@ -127,7 +107,6 @@ fn with_profiling(name: &str, f: impl FnOnce()) {
 #[divan::bench]
 fn bench_lookup(b: Bencher) {
 	let expr = Arc::new(Expression::new(r#"request.method"#).unwrap());
-	let ctx = root_context();
 	let req = ::http::Request::builder()
 		.method(Method::GET)
 		.header("x-example", "value")
@@ -140,7 +119,7 @@ fn bench_lookup(b: Bencher) {
 
 	with_profiling("lookup", || {
 		b.bench(|| {
-			exec.eval(&expr);
+			exec.eval(&expr).unwrap();
 		});
 	})
 }

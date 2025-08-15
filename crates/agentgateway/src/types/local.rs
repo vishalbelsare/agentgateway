@@ -1,40 +1,28 @@
 use std::collections::HashMap;
-use std::convert::Infallible;
-use std::io::Cursor;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use ::http::Uri;
 use agent_core::prelude::Strng;
-use anyhow::{Error, anyhow, bail};
-use itertools::Itertools;
-use jsonwebtoken::jwk::{AlgorithmParameters, JwkSet, KeyAlgorithm};
-use jsonwebtoken::{DecodingKey, Validation};
-use macro_rules_attribute::{apply, attribute_alias};
+use anyhow::{anyhow, bail};
+use macro_rules_attribute::apply;
 use openapiv3::OpenAPI;
-use rmcp::handler::server::router::tool::CallToolHandlerExt;
-use rustls::{ClientConfig, ServerConfig};
-use serde::de::DeserializeOwned;
+use rustls::ServerConfig;
 use serde_with::{TryFromInto, serde_as};
 
 use crate::http::auth::BackendAuth;
-use crate::http::backendtls::{BackendTLS, LocalBackendTLS};
-use crate::http::jwt::{JwkError, Jwt};
+use crate::http::backendtls::LocalBackendTLS;
 use crate::http::{filters, retry, timeout};
-use crate::llm::AIProvider;
 use crate::mcp::rbac::McpAuthorization;
 use crate::store::LocalWorkload;
-use crate::transport::tls;
 use crate::types::agent::PolicyTarget::RouteRule;
 use crate::types::agent::{
 	A2aPolicy, Authorization, Backend, BackendName, BackendReference, Bind, BindName, GatewayName,
 	Listener, ListenerKey, ListenerProtocol, ListenerSet, McpAuthentication, McpBackend, McpTarget,
 	McpTargetName, McpTargetSpec, OpenAPITarget, PathMatch, Policy, PolicyTarget, Route,
-	RouteBackend, RouteBackendReference, RouteFilter, RouteMatch, RouteName, RouteRuleName, RouteSet,
-	SimpleBackend, SimpleBackendReference, SseTargetSpec, StreamableHTTPTargetSpec, TCPRoute,
+	RouteBackendReference, RouteFilter, RouteMatch, RouteName, RouteRuleName, RouteSet,
+	SimpleBackendReference, SseTargetSpec, StreamableHTTPTargetSpec, TCPRoute,
 	TCPRouteBackendReference, TCPRouteSet, TLSConfig, Target, TargetedPolicy, TrafficPolicy,
-	parse_cert, parse_key,
 };
 use crate::types::discovery::{NamespacedHostname, Service};
 use crate::*;
@@ -65,6 +53,7 @@ pub struct NormalizedLocalConfig {
 pub struct LocalConfig {
 	#[serde(default)]
 	#[cfg_attr(feature = "schema", schemars(with = "RawConfig"))]
+	#[allow(unused)]
 	config: Arc<Option<serde_json::value::Value>>,
 	#[serde(default)]
 	binds: Vec<LocalBind>,
@@ -303,7 +292,7 @@ impl McpBackendHost {
 				let port = match (scheme, port) {
 					(s, p) if s == &http::Scheme::HTTP => p.unwrap_or(80),
 					(s, p) if s == &http::Scheme::HTTPS => p.unwrap_or(443),
-					(s, _) => {
+					(_, _) => {
 						anyhow::bail!("invalid scheme: {:?}", scheme);
 					},
 				};
@@ -638,7 +627,6 @@ async fn convert_route(
 		rule_name.clone().unwrap_or_else(|| strng::new("default"))
 	);
 	let mut filters = vec![];
-	let mut traffic_policy: Option<TrafficPolicy> = None;
 	let mut external_policies = vec![];
 	let mut pol = 0;
 	let mut tgt = |p: Policy| {
@@ -842,10 +830,9 @@ async fn convert_tcp_route(
 		route_name,
 		rule_name.clone().unwrap_or_else(|| strng::new("default"))
 	);
-	let mut traffic_policy: Option<TrafficPolicy> = None;
 	let mut external_policies = vec![];
 	let mut pol = 0;
-	let mut tgt = |p: Policy| {
+	let _tgt = |p: Policy| {
 		pol += 1;
 		TargetedPolicy {
 			name: format!("{key}/{pol}").into(),
@@ -854,12 +841,12 @@ async fn convert_tcp_route(
 		}
 	};
 	let mut be_pol = 0;
-	let mut backend_tgt = |p: Policy| {
+	let backend_tgt = |p: Policy| {
 		if backends.len() != 1 {
 			anyhow::bail!("backend policies currently only work with exactly 1 backend")
 		}
 
-		let (refs, to_add): (Vec<_>, Vec<Option<Backend>>) = backends
+		let (refs, _to_add): (Vec<_>, Vec<Option<Backend>>) = backends
 			.into_iter()
 			.map(|b| {
 				let (bref, backend) = to_simple_backend_and_ref(key.clone(), &b.backend);
@@ -879,24 +866,21 @@ async fn convert_tcp_route(
 		})
 	};
 
-	let mut traffic_policy = TrafficPolicy {
-		timeout: timeout::Policy::default(),
-		retry: None,
-	};
 	if let Some(pol) = policies {
 		let TCPFilterOrPolicy { backend_tls } = pol;
 		if let Some(p) = backend_tls {
 			external_policies.push(backend_tgt(Policy::BackendTLS(p.try_into()?))?)
 		}
 	}
-	let route = TCPRoute {
+	#[allow(unreachable_code)]
+	let _route = TCPRoute {
 		key,
 		route_name,
 		rule_name,
 		hostnames,
 		backends: todo!(),
 	};
-	Ok((route, external_policies))
+	Ok((_route, external_policies))
 }
 
 fn to_simple_backend_and_ref(
