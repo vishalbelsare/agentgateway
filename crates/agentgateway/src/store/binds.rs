@@ -18,8 +18,8 @@ use crate::proxy::httpproxy::PolicyClient;
 use crate::store::Event;
 use crate::types::agent::{
 	A2aPolicy, Backend, BackendName, Bind, BindName, GatewayName, Listener, ListenerKey, ListenerSet,
-	McpAuthentication, Policy, PolicyName, PolicyTarget, Route, RouteKey, RouteName, TCPRoute,
-	TargetedPolicy,
+	McpAuthentication, Policy, PolicyName, PolicyTarget, Route, RouteKey, RouteName, RouteRuleName,
+	TCPRoute, TargetedPolicy,
 };
 use crate::types::proto::agent::resource::Kind as XdsKind;
 use crate::types::proto::agent::{
@@ -162,8 +162,9 @@ impl Store {
 
 	pub fn route_policies(
 		&self,
-		route_rule: RouteKey,
+		route_rule: Option<RouteRuleName>,
 		route: RouteName,
+		listener: ListenerKey,
 		gateway: GatewayName,
 	) -> RoutePolicies {
 		// Changes we must do:
@@ -173,15 +174,18 @@ impl Store {
 		// * We do this lookup under one lock, but we will lookup backend rules and listener rules under a different
 		//   lock. This can lead to inconsistent state..
 		let gateway = self.policies_by_target.get(&PolicyTarget::Gateway(gateway));
-		let route = self.policies_by_target.get(&PolicyTarget::Route(route));
-		let route_rule = self
+		let listener = self
 			.policies_by_target
-			.get(&PolicyTarget::RouteRule(route_rule));
+			.get(&PolicyTarget::Listener(listener));
+		let route = self.policies_by_target.get(&PolicyTarget::Route(route));
+		let route_rule =
+			route_rule.and_then(|rr| self.policies_by_target.get(&PolicyTarget::RouteRule(rr)));
 		let rules = route_rule
 			.iter()
 			.copied()
 			.flatten()
 			.chain(route.iter().copied().flatten())
+			.chain(listener.iter().copied().flatten())
 			.chain(gateway.iter().copied().flatten())
 			.filter_map(|n| self.policies_by_name.get(n));
 
