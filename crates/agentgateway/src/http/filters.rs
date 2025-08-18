@@ -55,8 +55,7 @@ pub struct RequestRedirect {
 	#[serde(
 		default,
 		skip_serializing_if = "is_default",
-		serialize_with = "ser_display_option",
-		deserialize_with = "de_parse_option"
+		with = "http_serde::option::status_code"
 	)]
 	#[cfg_attr(feature = "schema", schemars(with = "Option<std::num::NonZeroU16>"))]
 	pub status: Option<http::StatusCode>,
