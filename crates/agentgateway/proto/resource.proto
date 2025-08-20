@@ -4,6 +4,7 @@ package agentgateway.dev.resource;
 
 import "google/protobuf/duration.proto";
 import "google/protobuf/wrappers.proto";
+import "google/protobuf/struct.proto";
 
 option go_package = "github.com/agentgateway/agentgateway/go/api;api";
 
@@ -263,6 +264,98 @@ message PolicySpec {
     google.protobuf.Duration fill_interval = 3;
     Type type = 4;
   }
+    message Ai {
+      message Message {
+        string role = 1;
+        string content = 2;
+      }
+
+      message PromptEnrichment {
+        repeated Message append = 1;
+        repeated Message prepend = 2;
+      }
+
+    enum BuiltinRegexRule {
+      BUILTIN_UNSPECIFIED = 0;
+      SSN = 1;
+      CREDIT_CARD = 2;
+      PHONE_NUMBER = 3;
+      EMAIL = 4;
+    }
+
+    message NamedRegex {
+      string pattern = 1;
+      string name = 2;
+    }
+
+    message RegexRule {
+      oneof kind {
+        BuiltinRegexRule builtin = 1;
+        NamedRegex regex = 2;
+      }
+    }
+
+    enum ActionKind {
+      ACTION_UNSPECIFIED = 0;
+      MASK = 1;
+      REJECT = 2;
+    }
+
+    message Action {
+      ActionKind kind = 1;
+      // Only used when kind == REJECT
+      RequestRejection reject_response = 2;
+    }
+
+    message RegexRules {
+      Action action = 1;
+      repeated RegexRule rules = 2;
+    }
+
+    message Webhook {
+      string host = 1;
+      uint32 port = 2;
+    }
+
+    message Moderation {
+      // Model to use. Defaults to `omni-moderation-latest`
+      google.protobuf.StringValue model = 1;
+      BackendAuthPolicy auth = 2;
+    }
+
+    // Response sent when rejecting a request
+    message RequestRejection {
+      bytes body = 1;
+      uint32 status = 2;
+    }
+
+    // Configuration for guarding/processing LLM responses
+    message ResponseGuard {
+      RegexRules regex = 1;
+      Webhook webhook = 2;
+    }
+
+    // Configuration for guarding/processing prompts
+    message RequestGuard {
+      // Response to send when request is rejected
+      RequestRejection rejection = 1;
+      RegexRules regex = 2;
+      Webhook webhook = 3;
+      Moderation openai_moderation = 4;
+    }
+
+    message PromptGuard {
+      // Guards applied to client requests before they reach the LLM
+      RequestGuard request = 1;
+      // Guards applied to LLM responses before they reach the client
+      ResponseGuard response = 2;
+    }
+
+    PromptGuard prompt_guard = 1;
+    map<string, string> defaults = 2;
+    map<string, string> overrides = 3;
+    PromptEnrichment prompts = 4;
+  }
   message ExternalAuth {
     BackendReference target = 1;
     map<string, string> context = 2;
@@ -300,6 +393,7 @@ message PolicySpec {
     BackendAuthPolicy auth = 6;
     RBAC authorization = 7;
     RBAC mcp_authorization = 8;
+    Ai ai = 9;
   }
 }
 

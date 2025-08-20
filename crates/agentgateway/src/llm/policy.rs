@@ -15,13 +15,13 @@ use crate::{client, *};
 #[apply(schema!)]
 pub struct Policy {
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	prompt_guard: Option<PromptGuard>,
+	pub prompt_guard: Option<PromptGuard>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	defaults: Option<HashMap<String, serde_json::Value>>,
+	pub defaults: Option<HashMap<String, serde_json::Value>>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	overrides: Option<HashMap<String, serde_json::Value>>,
+	pub overrides: Option<HashMap<String, serde_json::Value>>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	prompts: Option<PromptEnrichment>,
+	pub prompts: Option<PromptEnrichment>,
 }
 
 #[apply(schema!)]
@@ -31,18 +31,21 @@ pub struct PromptEnrichment {
 		feature = "schema",
 		schemars(with = "crate::llm::SimpleChatCompletionMessage")
 	)]
-	append: Vec<ChatCompletionRequestMessage>,
+	pub append: Vec<ChatCompletionRequestMessage>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	#[cfg_attr(
 		feature = "schema",
 		schemars(with = "crate::llm::SimpleChatCompletionMessage")
 	)]
-	prepend: Vec<ChatCompletionRequestMessage>,
+	pub prepend: Vec<ChatCompletionRequestMessage>,
 }
 
 #[apply(schema!)]
 pub struct PromptGuard {
-	request: Option<PromptGuardRequest>,
+	// Guards applied to client requests before they reach the LLM
+	pub request: Option<RequestGuard>,
+	// Guards applied to LLM responses before they reach the client
+	pub response: Option<ResponseGuard>,
 }
 impl Policy {
 	pub fn apply_prompt_enrichment(
@@ -117,7 +120,7 @@ impl Policy {
 			let resp: async_openai::types::CreateModerationResponse =
 				json::from_body(resp?.into_body()).await?;
 			if resp.results.iter().any(|r| r.flagged) {
-				return Ok(Some(g.response.as_response()));
+				return Ok(Some(g.rejection.as_response()));
 			}
 		}
 		if let Some(webhook) = &g.webhook {
@@ -217,22 +220,22 @@ impl Policy {
 }
 
 #[apply(schema!)]
-pub struct PromptGuardRequest {
+pub struct RequestGuard {
 	#[serde(default)]
-	response: PromptGuardResponse,
+	pub rejection: RequestRejection,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	regex: Option<RegexRules>,
+	pub regex: Option<RegexRules>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	webhook: Option<Webhook>,
+	pub webhook: Option<Webhook>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	openai_moderation: Option<Moderation>,
+	pub openai_moderation: Option<Moderation>,
 }
 
 #[apply(schema!)]
 pub struct RegexRules {
 	#[serde(default)]
-	action: Action,
-	rules: Vec<RegexRule>,
+	pub action: Action,
+	pub rules: Vec<RegexRule>,
 }
 
 #[apply(schema!)]
@@ -249,7 +252,7 @@ pub enum RegexRule {
 	},
 }
 
-impl PromptGuardResponse {
+impl RequestRejection {
 	pub fn as_response(&self) -> Response {
 		::http::response::Builder::new()
 			.status(self.status)
@@ -283,7 +286,7 @@ pub struct NamedRegex {
 
 #[apply(schema!)]
 pub struct Webhook {
-	target: Target,
+	pub target: Target,
 	// TODO: headers
 }
 
@@ -291,8 +294,9 @@ pub struct Webhook {
 pub struct Moderation {
 	/// Model to use. Defaults to `omni-moderation-latest`
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	model: Option<Strng>,
-	auth: SimpleBackendAuth,
+	pub model: Option<Strng>,
+	#[serde(serialize_with = "ser_redact")]
+	pub auth: SimpleBackendAuth,
 }
 
 #[apply(schema!)]
@@ -302,26 +306,34 @@ pub enum Action {
 	Mask,
 	Reject {
 		#[serde(default)]
-		response: PromptGuardResponse,
+		response: RequestRejection,
 	},
 }
 
 #[apply(schema!)]
-pub struct PromptGuardResponse {
+pub struct RequestRejection {
 	#[serde(default = "default_body", serialize_with = "ser_string_or_bytes")]
-	body: Bytes,
+	pub body: Bytes,
 	#[serde(default = "default_code", with = "http_serde::status_code")]
 	#[cfg_attr(feature = "schema", schemars(with = "std::num::NonZeroU16"))]
-	status: StatusCode,
+	pub status: StatusCode,
 }
 
-impl Default for PromptGuardResponse {
+impl Default for RequestRejection {
 	fn default() -> Self {
 		Self {
 			body: default_body(),
 			status: default_code(),
 		}
 	}
+}
+
+#[apply(schema!)]
+pub struct ResponseGuard {
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub regex: Option<RegexRules>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub webhook: Option<Webhook>,
 }
 
 #[apply(schema!)]

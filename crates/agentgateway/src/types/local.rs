@@ -744,7 +744,7 @@ async fn convert_route(
 			external_policies.push(backend_tgt(Policy::A2a(p))?)
 		}
 		if let Some(p) = ai {
-			external_policies.push(backend_tgt(Policy::AI(p))?)
+			external_policies.push(backend_tgt(Policy::AI(Arc::new(p)))?)
 		}
 		if let Some(p) = backend_tls {
 			external_policies.push(backend_tgt(Policy::BackendTLS(p.try_into()?))?)

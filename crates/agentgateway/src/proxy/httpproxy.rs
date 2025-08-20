@@ -738,7 +738,6 @@ async fn make_backend_call(
 						backend_tls: None,
 						backend_auth: None,
 						a2a: None,
-						llm: None,
 						inference_routing: None,
 						// Attach LLM provider, but don't use default setup
 						llm_provider: Some((ai.provider.clone(), false, ai.tokenize)),
@@ -854,7 +853,13 @@ async fn make_backend_call(
 	let (mut req, response_policies, llm_request) =
 		if let Some((llm, use_default_policies, tokenize)) = &policies.llm_provider {
 			let r = llm
-				.process_request(client, policies.llm.as_ref(), req, *tokenize, &mut log)
+				.process_request(
+					client,
+					route_policies.llm.as_deref(),
+					req,
+					*tokenize,
+					&mut log,
+				)
 				.await
 				.map_err(|e| ProxyError::Processing(e.into()))?;
 			let (mut req, llm_request) = match r {

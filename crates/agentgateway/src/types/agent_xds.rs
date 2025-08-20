@@ -5,7 +5,7 @@ use std::sync::Arc;
 use rustls::ServerConfig;
 
 use super::agent::*;
-use crate::http::auth::{AwsAuth, BackendAuth};
+use crate::http::auth::{AwsAuth, BackendAuth, SimpleBackendAuth};
 use crate::http::{StatusCode, authorization, backendtls, ext_proc, filters, localratelimit, uri};
 use crate::llm::{AIBackend, AIProvider};
 use crate::mcp::rbac::McpAuthorization;
@@ -667,6 +667,82 @@ impl TryFrom<&proto::agent::Policy> for TargetedPolicy {
 			Some(proto::agent::policy_spec::Kind::McpAuthorization(rbac)) => {
 				Policy::McpAuthorization(McpAuthorization::try_from(rbac)?)
 			},
+			Some(proto::agent::policy_spec::Kind::Ai(ai)) => {
+				let prompt_guard = ai.prompt_guard.as_ref().and_then(|pg| {
+					let reqp = pg.request.as_ref()?;
+
+					let rejection = if let Some(resp) = &reqp.rejection {
+						let status = u16::try_from(resp.status)
+							.ok()
+							.and_then(|c| StatusCode::from_u16(c).ok())
+							.unwrap_or(StatusCode::FORBIDDEN);
+						crate::llm::policy::RequestRejection {
+							body: Bytes::from(resp.body.clone()),
+							status,
+						}
+					} else {
+						//  use default response, since the response field is not optional on RequestGuard
+						crate::llm::policy::RequestRejection::default()
+					};
+
+					let regex = reqp
+						.regex
+						.as_ref()
+						.map(|rr| convert_regex_rules(rr, Some(rejection.clone())));
+
+					let webhook = reqp.webhook.as_ref().and_then(convert_webhook);
+
+					let openai_moderation =
+						reqp
+							.openai_moderation
+							.as_ref()
+							.map(|m| crate::llm::policy::Moderation {
+								model: m.model.as_deref().map(strng::new),
+								auth: match m.auth.as_ref().and_then(|a| a.kind.clone()) {
+									Some(crate::types::proto::agent::backend_auth_policy::Kind::Passthrough(_)) => {
+										SimpleBackendAuth::Passthrough {}
+									},
+									Some(crate::types::proto::agent::backend_auth_policy::Kind::Key(k)) => {
+										SimpleBackendAuth::Key(k.secret.into())
+									},
+									_ => SimpleBackendAuth::Passthrough {},
+								},
+							});
+
+					Some(crate::llm::policy::PromptGuard {
+						request: Some(crate::llm::policy::RequestGuard {
+							rejection,
+							regex,
+							webhook,
+							openai_moderation,
+						}),
+						response: pg
+							.response
+							.as_ref()
+							.map(|resp| crate::llm::policy::ResponseGuard {
+								regex: resp.regex.as_ref().map(|rr| convert_regex_rules(rr, None)),
+								webhook: resp.webhook.as_ref().and_then(convert_webhook),
+							}),
+					})
+				});
+
+				Policy::AI(Arc::new(llm::Policy {
+					prompt_guard,
+					defaults: Some(
+						ai.defaults
+							.iter()
+							.map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
+							.collect(),
+					),
+					overrides: Some(
+						ai.overrides
+							.iter()
+							.map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
+							.collect(),
+					),
+					prompts: ai.prompts.as_ref().map(convert_prompt_enrichment),
+				}))
+			},
 			_ => return Err(ProtoError::EnumParse("unknown spec kind".to_string())),
 		};
 		Ok(TargetedPolicy {
@@ -702,6 +778,114 @@ fn resolve_simple_reference(
 			SimpleBackendReference::Backend(name.into())
 		},
 	})
+}
+
+fn convert_message(
+	m: &proto::agent::policy_spec::ai::Message,
+) -> crate::llm::universal::RequestMessage {
+	match m.role.as_str() {
+		"system" => crate::llm::universal::RequestSystemMessage::from(m.content.clone()).into(),
+		"assistant" => crate::llm::universal::RequestAssistantMessage::from(m.content.clone()).into(),
+		"function" => crate::llm::universal::RequestFunctionMessage {
+			content: Some(m.content.clone()),
+			name: "".to_string(),
+		}
+		.into(),
+		"tool" => crate::llm::universal::RequestToolMessage {
+			content: crate::llm::universal::RequestToolMessageContent::from(m.content.clone()),
+			tool_call_id: "".to_string(),
+		}
+		.into(),
+		_ => crate::llm::universal::RequestUserMessage::from(m.content.clone()).into(),
+	}
+}
+
+fn convert_prompt_enrichment(
+	prompts: &proto::agent::policy_spec::ai::PromptEnrichment,
+) -> crate::llm::policy::PromptEnrichment {
+	crate::llm::policy::PromptEnrichment {
+		append: prompts.append.iter().map(convert_message).collect(),
+		prepend: prompts.prepend.iter().map(convert_message).collect(),
+	}
+}
+
+fn convert_webhook(
+	w: &proto::agent::policy_spec::ai::Webhook,
+) -> Option<crate::llm::policy::Webhook> {
+	match u16::try_from(w.port) {
+		Ok(port) => Some(crate::llm::policy::Webhook {
+			target: Target::Hostname(w.host.clone().into(), port),
+		}),
+		Err(_) => {
+			warn!(port = w.port, host = %w.host, "Webhook port out of range, ignoring webhook");
+			None
+		},
+	}
+}
+
+fn convert_regex_rules(
+	rr: &proto::agent::policy_spec::ai::RegexRules,
+	rejection: Option<crate::llm::policy::RequestRejection>,
+) -> crate::llm::policy::RegexRules {
+	let action = match rr
+		.action
+		.as_ref()
+		.and_then(|a| proto::agent::policy_spec::ai::ActionKind::try_from(a.kind).ok())
+	{
+		Some(proto::agent::policy_spec::ai::ActionKind::Reject) => crate::llm::policy::Action::Reject {
+			response: rejection.unwrap_or_default(),
+		},
+		_ => crate::llm::policy::Action::Mask,
+	};
+	let rules = rr
+		.rules
+		.iter()
+		.filter_map(|r| match &r.kind {
+			Some(proto::agent::policy_spec::ai::regex_rule::Kind::Builtin(b)) => {
+				match proto::agent::policy_spec::ai::BuiltinRegexRule::try_from(*b) {
+					Ok(builtin) => {
+						let builtin = match builtin {
+							proto::agent::policy_spec::ai::BuiltinRegexRule::Ssn => {
+								crate::llm::policy::Builtin::Ssn
+							},
+							proto::agent::policy_spec::ai::BuiltinRegexRule::CreditCard => {
+								crate::llm::policy::Builtin::CreditCard
+							},
+							proto::agent::policy_spec::ai::BuiltinRegexRule::PhoneNumber => {
+								crate::llm::policy::Builtin::PhoneNumber
+							},
+							proto::agent::policy_spec::ai::BuiltinRegexRule::Email => {
+								crate::llm::policy::Builtin::Email
+							},
+							_ => {
+								warn!(value = *b, "Unknown builtin regex rule, skipping");
+								return None;
+							},
+						};
+						Some(crate::llm::policy::RegexRule::Builtin { builtin })
+					},
+					Err(_) => {
+						warn!(value = *b, "Invalid builtin regex rule value, skipping");
+						None
+					},
+				}
+			},
+			Some(proto::agent::policy_spec::ai::regex_rule::Kind::Regex(n)) => {
+				match regex::Regex::new(&n.pattern) {
+					Ok(pattern) => Some(crate::llm::policy::RegexRule::Regex {
+						pattern,
+						name: n.name.clone(),
+					}),
+					Err(err) => {
+						warn!(error = %err, name = %n.name, pattern = %n.pattern, "Invalid regex pattern");
+						None
+					},
+				}
+			},
+			None => None,
+		})
+		.collect();
+	crate::llm::policy::RegexRules { action, rules }
 }
 
 fn resolve_reference(

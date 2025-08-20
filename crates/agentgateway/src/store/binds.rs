@@ -54,7 +54,6 @@ pub struct BackendPolicies {
 	// bool represents "should use default settings for provider"
 	// second bool represents "tokenize"
 	pub llm_provider: Option<(llm::AIProvider, bool, bool)>,
-	pub llm: Option<llm::Policy>,
 	pub inference_routing: Option<InferenceRouting>,
 }
 
@@ -65,7 +64,6 @@ impl BackendPolicies {
 			backend_tls: other.backend_tls.or(self.backend_tls),
 			backend_auth: other.backend_auth.or(self.backend_auth),
 			a2a: other.a2a.or(self.a2a),
-			llm: other.llm.or(self.llm),
 			llm_provider: other.llm_provider.or(self.llm_provider),
 			inference_routing: other.inference_routing.or(self.inference_routing),
 		}
@@ -88,6 +86,7 @@ pub struct RoutePolicies {
 	pub jwt: Option<http::jwt::Jwt>,
 	pub ext_authz: Option<ext_authz::ExtAuthz>,
 	pub transformation: Option<http::transformation_cel::Transformation>,
+	pub llm: Option<Arc<llm::Policy>>,
 }
 
 impl RoutePolicies {
@@ -118,6 +117,7 @@ impl From<RoutePolicies> for LLMRequestPolicies {
 				.filter(|r| r.limit_type == http::localratelimit::RateLimitType::Tokens)
 				.cloned()
 				.collect(),
+			llm: value.llm.clone(),
 		}
 	}
 }
@@ -126,6 +126,7 @@ impl From<RoutePolicies> for LLMRequestPolicies {
 pub struct LLMRequestPolicies {
 	pub local_rate_limit: Vec<http::localratelimit::RateLimit>,
 	pub remote_rate_limit: Option<http::remoteratelimit::RemoteRateLimit>,
+	pub llm: Option<Arc<llm::Policy>>,
 }
 
 #[derive(Debug, Default)]
@@ -197,6 +198,7 @@ impl Store {
 			ext_authz: None,
 			transformation: None,
 			authorization: None,
+			llm: None,
 		};
 		for rule in rules {
 			match &rule.policy {
@@ -221,6 +223,9 @@ impl Store {
 					// Authorization policies merge, unlike others
 					authz.push(p.clone().0);
 				},
+				Policy::AI(p) => {
+					pol.llm.get_or_insert_with(|| p.clone());
+				},
 				_ => {}, // others are not route policies
 			}
 		}
@@ -243,7 +248,6 @@ impl Store {
 			backend_tls: None,
 			backend_auth: None,
 			a2a: None,
-			llm: None,
 			inference_routing: None,
 			// These are not attached policies but are represented in this struct for code organization
 			llm_provider: None,
@@ -258,9 +262,6 @@ impl Store {
 				},
 				Policy::BackendAuth(p) => {
 					pol.backend_auth.get_or_insert_with(|| p.clone());
-				},
-				Policy::AI(p) => {
-					pol.llm.get_or_insert_with(|| p.clone());
 				},
 				Policy::InferenceRouting(p) => {
 					pol.inference_routing.get_or_insert_with(|| p.clone());

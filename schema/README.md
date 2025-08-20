@@ -139,9 +139,9 @@ This folder contains JSON schemas for various parts of the project
 |`binds[].listeners[].routes[].policies.ai`|Mark this as LLM traffic to enable LLM processing.|
 |`binds[].listeners[].routes[].policies.ai.promptGuard`||
 |`binds[].listeners[].routes[].policies.ai.promptGuard.request`||
-|`binds[].listeners[].routes[].policies.ai.promptGuard.request.response`||
-|`binds[].listeners[].routes[].policies.ai.promptGuard.request.response.body`||
-|`binds[].listeners[].routes[].policies.ai.promptGuard.request.response.status`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.request.rejection`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.request.rejection.body`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.request.rejection.status`||
 |`binds[].listeners[].routes[].policies.ai.promptGuard.request.regex`||
 |`binds[].listeners[].routes[].policies.ai.promptGuard.request.regex.action`||
 |`binds[].listeners[].routes[].policies.ai.promptGuard.request.regex.action.(1)reject`||
@@ -160,6 +160,19 @@ This folder contains JSON schemas for various parts of the project
 |`binds[].listeners[].routes[].policies.ai.promptGuard.request.openaiModeration.auth.(1)passthrough`||
 |`binds[].listeners[].routes[].policies.ai.promptGuard.request.openaiModeration.auth.(1)key`||
 |`binds[].listeners[].routes[].policies.ai.promptGuard.request.openaiModeration.auth.(1)key.(any)file`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.response`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.response.regex`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.response.regex.action`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.response.regex.action.(1)reject`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.response.regex.action.(1)reject.response`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.response.regex.action.(1)reject.response.body`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.response.regex.action.(1)reject.response.status`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.response.regex.rules`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.response.regex.rules[].(any)builtin`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.response.regex.rules[].(any)pattern`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.response.regex.rules[].(any)name`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.response.webhook`||
+|`binds[].listeners[].routes[].policies.ai.promptGuard.response.webhook.target`||
 |`binds[].listeners[].routes[].policies.ai.defaults`||
 |`binds[].listeners[].routes[].policies.ai.overrides`||
 |`binds[].listeners[].routes[].policies.ai.prompts`||
