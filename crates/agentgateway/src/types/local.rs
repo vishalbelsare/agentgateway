@@ -620,23 +620,12 @@ async fn convert_route(
 	} = lr;
 
 	let route_name = route_name.unwrap_or_else(|| strng::format!("route{}", idx));
-	let key = strng::format!(
-		"{}/{}/{}",
-		listener_key,
-		route_name,
-		rule_name.clone().unwrap_or_else(|| strng::new("default"))
-	);
+	let rule_name = rule_name.clone().unwrap_or_else(|| strng::new("default"));
+	let key = strng::format!("{}/{}/{}", listener_key, route_name, rule_name,);
+	let rule_name = strng::format!("{route_name}/{rule_name}");
 	let mut filters = vec![];
 	let mut external_policies = vec![];
-	let mut pol = 0;
-	let mut tgt = |p: Policy| {
-		pol += 1;
-		TargetedPolicy {
-			name: format!("{key}/{pol}").into(),
-			target: RouteRule(key.clone()),
-			policy: p,
-		}
-	};
+	let mut inline_policies = vec![];
 
 	let mut backend_refs = Vec::new();
 	let mut external_backends = Vec::new();
@@ -738,7 +727,7 @@ async fn convert_route(
 		if let Some(p) = mcp_authentication {
 			let jp = p.as_jwt()?;
 			external_policies.push(backend_tgt(Policy::McpAuthentication(p))?);
-			external_policies.push(tgt(Policy::JwtAuth(jp.try_into(client.clone()).await?)));
+			inline_policies.push(Policy::JwtAuth(jp.try_into(client.clone()).await?));
 		}
 		if let Some(p) = a2a {
 			external_policies.push(backend_tgt(Policy::A2a(p))?)
@@ -753,13 +742,13 @@ async fn convert_route(
 			external_policies.push(backend_tgt(Policy::BackendAuth(p))?)
 		}
 		if let Some(p) = jwt_auth {
-			external_policies.push(tgt(Policy::JwtAuth(p.try_into(client.clone()).await?)))
+			inline_policies.push(Policy::JwtAuth(p.try_into(client.clone()).await?));
 		}
 		if let Some(p) = transformations {
-			external_policies.push(tgt(Policy::Transformation(p)))
+			inline_policies.push(Policy::Transformation(p));
 		}
 		if let Some(p) = authorization {
-			external_policies.push(tgt(Policy::Authorization(p)))
+			inline_policies.push(Policy::Authorization(p))
 		}
 		if let Some(p) = ext_authz {
 			let (bref, backend) =
@@ -771,10 +760,10 @@ async fn convert_route(
 			backend
 				.into_iter()
 				.for_each(|backend| external_backends.push(backend));
-			external_policies.push(tgt(Policy::ExtAuthz(pol)))
+			inline_policies.push(Policy::ExtAuthz(pol))
 		}
 		if !local_rate_limit.is_empty() {
-			external_policies.push(tgt(Policy::LocalRateLimit(local_rate_limit)))
+			inline_policies.push(Policy::LocalRateLimit(local_rate_limit))
 		}
 		if let Some(p) = remote_rate_limit {
 			let (bref, backend) =
@@ -787,7 +776,7 @@ async fn convert_route(
 			backend
 				.into_iter()
 				.for_each(|backend| external_backends.push(backend));
-			external_policies.push(tgt(Policy::RemoteRateLimit(pol)))
+			inline_policies.push(Policy::RemoteRateLimit(pol))
 		}
 
 		if let Some(p) = timeout {
@@ -800,12 +789,13 @@ async fn convert_route(
 	let route = Route {
 		key,
 		route_name,
-		rule_name,
+		rule_name: Some(rule_name),
 		hostnames,
 		matches,
 		filters,
 		backends: backend_refs,
 		policies: Some(traffic_policy),
+		inline_policies,
 	};
 	Ok((route, external_policies, external_backends))
 }

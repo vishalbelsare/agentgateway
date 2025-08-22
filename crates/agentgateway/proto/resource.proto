@@ -63,6 +63,7 @@ message Route {
   repeated RouteFilter filters = 7;
   repeated RouteBackend backends = 8;
   TrafficPolicy traffic_policy = 9;
+  repeated PolicySpec inline_policies = 10;
 }
 
 message TCPRoute {
@@ -248,9 +249,11 @@ message PolicyTarget {
     string route = 3;
     // Matches Route.rule_name
     string route_rule = 4;
-    // For Service: `service/{namespace}/{hostname}:{port}`
+    // For ServicePort: `service/{namespace}/{hostname}:{port}`
     // For Backend: `{ns}/{name}`
     string backend = 5;
+    // namespace}/{hostname}
+    string service = 6;
   }
 }
 message PolicySpec {
@@ -379,6 +382,8 @@ message PolicySpec {
     google.protobuf.BytesValue root = 3;
     // Disable all verification
     google.protobuf.BoolValue insecure = 4;
+    // If set, override the SNI explicitly. Otherwise, it is auto-derived.
+    google.protobuf.StringValue hostname = 5;
   }
   message RBAC {
     repeated string allow = 1;

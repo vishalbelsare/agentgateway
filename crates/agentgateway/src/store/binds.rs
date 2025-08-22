@@ -19,7 +19,7 @@ use crate::store::Event;
 use crate::types::agent::{
 	A2aPolicy, Backend, BackendName, Bind, BindName, GatewayName, Listener, ListenerKey, ListenerSet,
 	McpAuthentication, Policy, PolicyName, PolicyTarget, Route, RouteKey, RouteName, RouteRuleName,
-	TCPRoute, TargetedPolicy,
+	ServiceName, TCPRoute, TargetedPolicy,
 };
 use crate::types::proto::agent::resource::Kind as XdsKind;
 use crate::types::proto::agent::{
@@ -167,6 +167,7 @@ impl Store {
 		route: RouteName,
 		listener: ListenerKey,
 		gateway: GatewayName,
+		inline: &[Policy],
 	) -> RoutePolicies {
 		// Changes we must do:
 		// * Index the store by the target
@@ -188,7 +189,9 @@ impl Store {
 			.chain(route.iter().copied().flatten())
 			.chain(listener.iter().copied().flatten())
 			.chain(gateway.iter().copied().flatten())
-			.filter_map(|n| self.policies_by_name.get(n));
+			.filter_map(|n| self.policies_by_name.get(n))
+			.map(|p| &p.policy);
+		let rules = inline.iter().chain(rules);
 
 		let mut authz = Vec::new();
 		let mut pol = RoutePolicies {
@@ -201,7 +204,7 @@ impl Store {
 			llm: None,
 		};
 		for rule in rules {
-			match &rule.policy {
+			match &rule {
 				Policy::LocalRateLimit(p) => {
 					if pol.local_rate_limit.is_empty() {
 						pol.local_rate_limit = p.clone();
@@ -236,12 +239,21 @@ impl Store {
 		pol
 	}
 
-	pub fn backend_policies(&self, tgt: PolicyTarget) -> BackendPolicies {
-		let rules = self.policies_by_target.get(&tgt);
-		let rules = rules
+	pub fn backend_policies(
+		&self,
+		backend: BackendName,
+		service: Option<ServiceName>,
+	) -> BackendPolicies {
+		let backend_rules = self.policies_by_target.get(&PolicyTarget::Backend(backend));
+		let service_rules =
+			service.and_then(|t| self.policies_by_target.get(&PolicyTarget::Service(t)));
+
+		// Backend > Service
+		let rules = backend_rules
 			.iter()
 			.copied()
 			.flatten()
+			.chain(service_rules.iter().copied().flatten())
 			.filter_map(|n| self.policies_by_name.get(n));
 
 		let mut pol = BackendPolicies {
@@ -453,6 +465,11 @@ impl Store {
 
 	pub fn insert_backend(&mut self, b: Backend) {
 		let name = b.name();
+		if let Backend::AI(_, t) = &b
+			&& t.tokenize
+		{
+			preload_tokenizers()
+		}
 		let arc = Arc::new(b);
 		self.backends_by_name.insert(name, arc);
 	}
@@ -771,4 +788,16 @@ impl agent_xds::Handler<ADPResource> for StoreUpdater {
 		};
 		agent_xds::handle_single_resource(updates, handle)
 	}
+}
+
+fn preload_tokenizers() {
+	static INIT_TOKENIZERS: std::sync::Once = std::sync::Once::new();
+
+	tokio::task::spawn_blocking(|| {
+		INIT_TOKENIZERS.call_once(|| {
+			let t0 = std::time::Instant::now();
+			crate::llm::preload_tokenizers();
+			info!("tokenizers loaded in {}ms", t0.elapsed().as_millis());
+		});
+	});
 }

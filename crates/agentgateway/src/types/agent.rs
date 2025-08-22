@@ -149,6 +149,8 @@ pub struct Route {
 	pub backends: Vec<RouteBackendReference>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub policies: Option<TrafficPolicy>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub inline_policies: Vec<Policy>,
 }
 
 pub type RouteKey = Strng;
@@ -473,6 +475,7 @@ impl Backend {
 }
 
 pub type BackendName = Strng;
+pub type ServiceName = Strng;
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -978,6 +981,8 @@ pub enum PolicyTarget {
 	Listener(ListenerKey),
 	Route(RouteName),
 	RouteRule(RouteRuleName),
+	// Note: Backend includes Service:port, this is used when we are *only* attaching to service
+	Service(ServiceName),
 	Backend(BackendName),
 }
 
